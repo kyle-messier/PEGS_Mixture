@@ -16,5 +16,5 @@ Project on analyzing environmental and climate mixtures on health outcomes with 
 ## No `./input` in GitHub repository: separated data management
 
 - PEGS data is highly sensitive; no local data storage is allowed
-- If additional inputs (e.g., climate data, socioeconomic data, and greenspace data) will be read from a common research storage or local (if it has no sensitive information issues) directories.
+- If additional inputs (e.g., climate data, socioeconomic data, and greenspace data) other than the present covariates are necessary, base data for covariate calculation will be read from a common research storage or local (if it has no sensitive information issues) directories.
 
