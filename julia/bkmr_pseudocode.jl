@@ -1,3 +1,4 @@
+
 using LinearAlgebra
 using Turing
 using AbstractGPs, Random, Distributed
@@ -51,35 +52,55 @@ a_pi0_in = 4
 b_pi0_in = 2
 
 @everywhere using Turing
+@everywhere using KernelFunctions
+@everywhere using Random
+@everywhere using Distributions
+
+@everywhere begin
+xin = Random.rand(100, 4)
+yin = Random.rand(100)
+zin = Random.rand(100, 3)
+K = KernelFunctions.GaussianKernel()
+a_sigma_in = 0.0625
+b_sigma_in = 0.5
+a_lambda_in = 1
+b_lambda_in = 0.1
+a_pi0_in = 4
+b_pi0_in = 2
+end
 
 # Define a model on all processes.
 @everywhere function skeleton_bkmr(
     x, y, z, K,
     a_sigma, b_sigma,
     a_lambda, b_lambda,
-    a_pi0, b_pi0)
+    a_pi0, b_pi0,
+    ngroups = 1)
     nrow, ncol = size(x)
     
-    # Priors
-    tau ~ Gamma(a_sigma, b_sigma)
-    lambda ~ Gamma(a_lambda, b_lambda) # lambda=tau sigma^-2 in the original article; tau is u, sigma^-2 is tau
-    pi0 ~ Beta(a_pi0, b_pi0)
-  
+    u = 0
+    h = Random.rand(nrow, 1)
+    u ~ Uniform(-1, 1)
+    h ~ MultivariateNormal(zeros(nrow), u .* K((z - z')^2))
     # for i ∈ 1:1:nrow
-    y ~ Normal(h .+ x * beta, (tau^-2) .* Diagonal(repeat([1], nrow)))
+    y ~ MultivariateNormal(h .+ x * beta, (tau^-2) .* Diagonal(repeat([1], nrow)))
     # end
-    h ~ MultivariateNormal(zeros(nrow), u .* K((k - k')^2))
   
     # variable selection
-    
-    for m ∈ ncomps
+    # Priors
+    tau ~ Gamma(a_sigma, b_sigma)
+    lambda = u * (tau ^ -2)
+    lambda ~ Gamma(a_lambda, b_lambda) # lambda=tau sigma^-2 in the original article; tau is u, sigma^-2 is tau
+    pi0 ~ Beta(a_pi0, b_pi0)
+
+    for m ∈ 1:1:ncol
       # P0... density with point mass at 0
       # where pdf is Unif^-1
-      r[m] ~ delta[m] .* pdf(r[m]) + (1 - delta[m]) * P0
+      r[m] ~ delta[m] .* Distributions.pdf(Uniform(), r[m]) + (1 - delta[m]) * Distributions.pdf(Uniform(), 0)
       delta[m] ~ Bernoulli(pi0)
     end
   
-    for g ∈ ngroups
+    for g ∈ 1:1:ngroups
       Delta[g] ~ Multinomial(omega[g], pdf_G) # g ∈ 1, ..., G
       omega[g] ~ Bernoulli(pi0)
     end
