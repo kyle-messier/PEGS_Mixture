@@ -39,8 +39,8 @@ obj.sizes <- obj.list %>%
   lapply(function(x) Reduce(rbind, sapply(x, function(y) dim(get(y)), simplify = FALSE))) %>%
   Reduce(rbind, .) %>%
   as.data.frame
-cbind(obj.names, obj.sizes) %>%
-  write.csv("./output/object_list.csv", row.names = FALSE)
+# cbind(obj.names, obj.sizes) %>%
+#   write.csv("./output/object_list.csv", row.names = FALSE)
 
 ## Key info & glossary
 ## epr_number: EPR (previous name of PEGS) unique id
@@ -77,13 +77,18 @@ epr.gis <- epr.gis %>%
 is.date <- function(x) inherits(x, 'Date')
 
 ## summary tables
+sink(file = "./output/summary_stats_objects.txt")
+options(width = 240)
 lapply(obj.names$value[!grepl("meta", obj.names$value)],
   function(x) {
+    print(sprintf("Summary statistics of %s", x))
     get(x) %>%
     mutate_if(is.character, ~as.factor(.)) %>%
     mutate_if(is.date, ~as.numeric(.)) %>%
     skimr::skim()
   })
+sink(NULL)
+options(width = 120)
 # epr.svi %>%
 #     vtable::sumtable(vars = names(.), 
 #                      add.median = TRUE,
@@ -165,8 +170,8 @@ ggindallploc = ggplot() +
 epr_atc_psych <-
   epr.atc %>%
   as_tibble %>%
-  filter(grepl("DEPRESS", atc_level3_name)) %>%
-  mutate(flag_antidep_1p = 1) %>%
+  # filter(grepl("DEPRESS", atc_level3_name)) %>%
+  mutate(flag_antidep_1p = ifelse(grepl("DEPRESS", atc_level3_name), 1, 0)) %>%
   mutate(epr_number = as.integer(epr_number))
 length(unique(epr_atc_psych$epr_number))
 unique(epr_atc_psych$atc_level3_name)
@@ -226,10 +231,30 @@ epr_he_mental <-
   select(1, he_flsum, flag_antidep_1p, flag_antidep_2p, 2:(ncol(.)-4)) %>%
   mutate(across(starts_with("flag_antidep"), ~ifelse(is.na(.), 0, .)))
 
+epr_eb_mental <-
+  epr.eb %>%
+  as_tibble %>%
+  select(1, starts_with("eb_e")) %>%
+  mutate(epr_number = as.integer(epr_number)) %>%
+  mutate(across(-1, ~as.integer(.))) %>%
+  mutate(across(-1, ~ifelse(is.na(.), -999, .)))
+
+epr_eb_q_psych <- inner_join(epr_eb_mental, epr_atc_psych)
+antidep_cope <- table(epr_eb_q_psych$flag_antidep_1p, epr_eb_q_psych$eb_e095_unable_to_cope)
+antidep_cope/rowSums(antidep_cope)
+
+antidep_cope <- table(epr_eb_q_psych$flag_antidep_1p, epr_eb_q_psych$eb_e099_cannot_overcome)
+antidep_cope/rowSums(antidep_cope)
+
+antidep_cope <- table(epr_eb_q_psych$flag_antidep_1p, epr_eb_q_psych$eb_e094_going_your_way)
+antidep_cope/rowSums(antidep_cope)
+
+
 epr_he_mental
 
 table(epr_he_mental$flag_antidep_1p, epr_he_mental$he_flsum)
 table(epr_he_mental$flag_antidep_2p, epr_he_mental$he_flsum)
 # questionnaire gives high frequency of self-reported negative mental health
 # in participants who do not take antidepressants
-# result of positiveness?
+# indicative of self-recognition of negative mental health stauts or
+# the importance of willingness to get treatment
