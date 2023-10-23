@@ -4,3 +4,5 @@
 ._*
 /output/*.html
 /output/*.txt
+**/.DS_Store
+/.DS_Store

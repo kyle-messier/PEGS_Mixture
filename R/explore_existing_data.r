@@ -1,7 +1,7 @@
 library(pacman)
-p_load(sf, terra, dplyr, purrr, data.table, vtable, skimr)
+p_load(sf, terra, dplyr, purrr, data.table, vtable, skimr, rmapshaper, tigris)
 sf_use_s2(FALSE)
-
+Sys.setenv("TIGRIS_CACHE_DIR" = sprintf("%s/tigris_cache/", Sys.getenv("HOME")))
 
 ## data path determination
 ## compute_mode 1 (wine mount), compute_mode 2 (hpc compute node), 3 (container internal)
@@ -69,32 +69,31 @@ obj.sizes <- obj.list %>%
 ## bcbb.map: changes over multiple surveys, gender identification, withdrawal, death
 ##    has_address_d: last known address indicator
 
-grep("meta", obj.names$value, value = TRUE) %>%
-  lapply(get)
+# grep("meta", obj.names$value, value = TRUE) %>%
+#   lapply(get)
 epr.gis <- epr.gis %>%
   mutate(gis_event_date = as.Date(gis_event_date, format = "%M/%d/%Y"))
+# Timeflag incompleteness
+# Spatial coord incompleteness
+
+
 
 is.date <- function(x) inherits(x, 'Date')
 
 ## summary tables
-sink(file = "./output/summary_stats_objects.txt")
-options(width = 240)
-lapply(obj.names$value[!grepl("meta", obj.names$value)],
-  function(x) {
-    print(sprintf("Summary statistics of %s", x))
-    get(x) %>%
-    mutate_if(is.character, ~as.factor(.)) %>%
-    mutate_if(is.date, ~as.numeric(.)) %>%
-    skimr::skim()
-  })
-sink(NULL)
-options(width = 120)
-# epr.svi %>%
-#     vtable::sumtable(vars = names(.), 
-#                      add.median = TRUE,
-#                      file = "./output/summary_svi.html")
-
-summary(epr.he)
+# sink(file = "./output/summary_stats_objects.txt")
+# options(width = 240)
+# lapply(obj.names$value[!grepl("meta", obj.names$value)],
+#   function(x) {
+#     print(sprintf("Summary statistics of %s", x))
+#     get(x) %>%
+#     mutate_if(is.character, ~as.factor(.)) %>%
+#     mutate_if(is.date, ~as.numeric(.)) %>%
+#     skimr::skim()
+#   })
+# sink(NULL)
+# options(width = 120)
+# summary(epr.he)
 
 
 ## Location maps
@@ -112,7 +111,7 @@ ggindloc <- ggplot() +
     geom_sf(data = us_cnty, linewidth = 0.8) +
     geom_sf(data = epr_sfs, pch = 19, cex = 0.6, col = 'red') +
     labs(caption = "Coordinates were jittered.")
-ggsave("./output/distr.png", ggindloc, width = 15, height = 9, units = "in", dpi = 300)
+# ggsave("./output/distr.png", ggindloc, width = 15, height = 9, units = "in", dpi = 300)
 
 
 
@@ -121,18 +120,18 @@ ggsave("./output/distr.png", ggindloc, width = 15, height = 9, units = "in", dpi
 
 ## Detailed metadata tables -- failed
 ## Metadata tables are seemingly generated from SAS
-codebooks <- list.files(paste0(path_pegs, "Data_Freezes/latest"),
-            pattern = "*_codebook_([0-9]+{1,2})*.*.pdf$",
-            recursive = TRUE,
-            full.names = TRUE)
-codebooks <- codebooks[!grepl("appendix", codebooks)]
+# codebooks <- list.files(paste0(path_pegs, "Data_Freezes/latest"),
+#             pattern = "*_codebook_([0-9]+{1,2})*.*.pdf$",
+#             recursive = TRUE,
+#             full.names = TRUE)
+# codebooks <- codebooks[!grepl("appendix", codebooks)]
 
-codebook_tables <- lapply(codebooks[2], 
-    function(x) tabulizer::extract_tables(x, method = "lattice", output = "data.frame") %>% map(as_tibble))
+# codebook_tables <- lapply(codebooks[2], 
+#     function(x) tabulizer::extract_tables(x, method = "lattice", output = "data.frame") %>% map(as_tibble))
 
-pdf_tables <- pdf_data |> 
-  extract_tables(output = "data.frame") |>
-  map(as_tibble)
+# pdf_tables <- pdf_data |> 
+#   extract_tables(output = "data.frame") |>
+#   map(as_tibble)
 
 
 ## check the number of participants who were "all available" in surveys
@@ -160,10 +159,13 @@ epr_allp_sf = epr.gis %>%
   st_as_sf(coords = c("gis_longitude", "gis_latitude"), crs = 4326)
 epr_allp_sf[us_cnty %>% filter(STATEFP == 37),]
 
-ggindallploc = ggplot() +
-  geom_sf(data = us_cnty, linewidth = 0.8) +
-  geom_sf(data = epr_allp_sf, pch = 19, cex = 0.6, col = 'red')
 
+us_cnty_s <- rmapshaper::ms_simplify(us_cnty, 0.1, keep_shapes = TRUE)
+epr_allp_sf_sub <- epr_allp_sf[us_cnty_s,]
+ggindallploc = ggplot() +
+  geom_sf(data = us_cnty_s, linewidth = 0.8) +
+  geom_sf(data = epr_allp_sf_sub, pch = 19, cex = 0.6, col = 'red')
+ggindallploc
 
 
 ### ATC
@@ -258,3 +260,37 @@ table(epr_he_mental$flag_antidep_2p, epr_he_mental$he_flsum)
 # in participants who do not take antidepressants
 # indicative of self-recognition of negative mental health stauts or
 # the importance of willingness to get treatment
+
+
+
+
+# temporal inconsistency check
+epr_gis <- epr.gis %>%
+  mutate(event_code = case_when(
+    gis_study_event == "longest_lived_child" ~ "A",
+    gis_study_event == "longest_lived_adult" ~ "B",
+    gis_study_event == "enrollment" ~ "C",
+    gis_study_event == "health_and_exposure" ~ "D",
+    gis_study_event == "current_address_exposome_a" ~ "E",
+    TRUE ~ NA
+  )) %>%
+  arrange(epr_number, event_code)
+
+epr_gis %>%
+  group_by(epr_number) %>%
+  #mutate(lag_evdate = lag(gis_event_date)) %>%
+  #filter(!is.na(lag_evdate)) %>%
+  mutate(evdate_diff = c(NA, diff(gis_event_date))) %>%
+  filter(!is.na(evdate_diff)) %>%
+  filter(evdate_diff < 0) %>%
+  ungroup() %>%
+  # .$gis_study_event %>%
+  # unique()
+  filter(gis_study_event == "health_and_exposure") %>%
+  select(epr_number, evdate_diff)
+## in some cases, health_and_exposure completion date precedes the enrolment
+## the number is negligible (18/18K+, <0.1 %)
+
+
+## EB
+## eb_b and eb_e: medication and mental health status
