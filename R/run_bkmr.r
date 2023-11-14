@@ -96,3 +96,63 @@ testbkmr <- bkmr::kmbayes(y = y_in, Z = Z_in, X = X_in, family = "binomial", var
 # 2  svi_2010_P_SNGPRNT 0.610
 # 3 svi_2010_P_MINORITY 0.394
 # 4   svi_2010_P_GROUPQ 0.562
+
+
+
+## glmnet
+epr_console_sub_noe <-
+  epr_console_sub %>%
+  select(-contains("_E_"), -contains("EPL"))
+xcomplete <- complete.cases(epr_console_sub_noe)
+epr_form <- reformulate(
+  termlabels = names(epr_console_sub_noe)[-1],
+  response = names(epr_console_sub_noe)[1]
+)
+targ_interaction <- seq(81, 84)
+y_in <- epr_console_sub_noe[,1] %>%
+  as.matrix()
+X_in <- epr_console_sub_noe[, -..targ_interaction] %>%
+  .[,-1] %>%
+  as.matrix() %>%
+  .[,!apply(., 2, \(x) any(is.na(x)))] %>%
+  # remove covariates with "excessive" zeros (i.e., 2000+ / 2751)
+  # reduces the # covariates dramatically to five
+  .[,apply(., 2, \(x) sum(x == 0) < 2700)]
+
+epr_console_mat <- model.frame(epr_form, epr_console_sub_noe)
+epr_glmnet <- glmnet::glmnet(
+  x = X_in,
+  y = y_in,
+  family = "binomial",
+  pmax = 50L,
+  nlambda = 200L,
+  type.logistic = "modified.Newton"
+)
+epr_glmnet
+png("glmnet_test.png", width = 15, height = 6, units = "in", res = 300)
+plot(epr_glmnet)
+dev.off()
+
+
+## bnlearn groupBN
+library(bnlearn)
+library(GroupBN)
+
+bll <- expand.grid(from = names(epr_console_mat)[1],
+  to = names(epr_console_mat)[-1])
+test <- rsmax2(epr_console_mat, blacklist = bll)
+
+namelist <- colnames(epr_console_mat)
+nameflag <- strsplit(colnames(epr_console_mat), "_", fixed = TRUE) |>
+  sapply(function(x) x[1]) |>
+  Reduce(f = c, x = _)
+names(namelist) <- nameflag
+
+png("mmhc_test.png", width = 15, height = 10, units = "in", res = 508)
+graphviz.plot(test, shape = "rectangle", layout = "twopi",
+  fontsize = 15,
+  groups = namelist,
+  highlight = list(nodes = c("flag_antidep_1p"), col = "pink"))
+dev.off()
+
+

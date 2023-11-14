@@ -1,0 +1,57 @@
+---
+title: "FEMA disaster aid data"
+author: Insang Song
+date: 11/03/2023
+output:
+  html:
+    toc: true
+    style: cerulean
+---
+
+
+
+```{r}
+knitr::opts_chunk$set(echo = FALSE)
+reticulate::virtualenv_install(packages = c("dask_geopandas", "dask", "pypolars", "xarray", "rioxarray"))
+
+```
+
+
+
+
+```{python}
+import dask_geopandas as dgpd
+import dask.dataframe as ddf
+fema_reg_rent = ddf.read_csv("~/Downloads/HousingAssistanceRenters.csv", \
+    dtype = {'zipCode': 'object'})
+fema_reg_own = ddf.read_csv("~/Downloads/HousingAssistanceOwners.csv", \
+    dtype = {'zipCode': 'object'})
+fema_reg_dec = ddf.read_csv("~/Downloads/DisasterDeclarationsSummaries.csv", \
+    dtype = {'lastIAFilingDate': 'object'})
+
+fema_reg_own.head()
+fema_reg_rent.head()
+fema_reg_dec.head()
+
+fema_reg_dec.sort_values("declarationDate", ascending = True).compute()
+
+fema_reg_rent.sort_values("totalMaxGrants").compute()
+fema_reg_rent.columns
+
+fema = ddf.read_csv("~/Downloads/IndividualAssistanceHousingRegistrantsLargeDisasters.csv", \
+    dtype={'censusBlockId': 'float64',
+        'censusYear': 'float64',
+        'primaryResidence': 'float64',
+        'rentalAssistanceEndDate': 'object',
+        'rentalResourceCity': 'object',
+        'rentalResourceStateAbbreviation': 'object',
+        'rentalResourceZipCode': 'object',
+        'renterDamageLevel': 'object'})
+
+fema.head()
+fema.columns
+
+fema_years = fema.censusYear.unique()
+fema_years.compute()
+
+```
