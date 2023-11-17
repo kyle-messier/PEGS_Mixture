@@ -40,8 +40,6 @@ worker_all <- function(path, time, template = baserast) {
 }
 
 
-
-
 # blank raster
 target_ext <-
   terra::vect(terra::ext(c(-126, -70, 25, 50)),
@@ -55,7 +53,7 @@ baserast <- terra::rast(
   crs = "EPSG:5070"
 )
 
-targrasts <- gsub("raw/hms_smoke_Shapefile", "processed/smoke_heavy", zips)
+targrasts <- gsub("raw/hms_smoke_Shapefile", "processed_heavy/smoke_heavy", zips)
 targrasts <- gsub("zip", "nc", targrasts)
 
 plan(multicore, workers = 8)
@@ -69,8 +67,32 @@ foreach(
   terra::writeRaster(pcs, filename = targrasts[x])
 }
 
+targrasts <- gsub("raw/hms_smoke_Shapefile", "processed_medium/smoke_medium", zips)
+targrasts <- gsub("zip", "nc", targrasts)
+
+foreach(
+  x = seq_along(shps),
+  .export = c("baserast", "zips", "shps", "targrasts", "worker_density"),
+  .packages = c("dplyr", "terra")
+) %dopar% {
+  pcs <- worker_density(shps[x], template = baserast, sub_dens = "Medium")
+  terra::writeRaster(pcs, filename = targrasts[x])
+}
+
+targrasts <- gsub("raw/hms_smoke_Shapefile", "processed_light/smoke_light", zips)
+targrasts <- gsub("zip", "nc", targrasts)
+
+foreach(
+  x = seq_along(shps),
+  .export = c("baserast", "zips", "shps", "targrasts", "worker_density"),
+  .packages = c("dplyr", "terra")
+) %dopar% {
+  pcs <- worker_density(shps[x], template = baserast, sub_dens = "Light")
+  terra::writeRaster(pcs, filename = targrasts[x])
+}
 
 
+# testcode
 test <- worker_density(shps[1])
 plot(test)
 
