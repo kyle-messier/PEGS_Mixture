@@ -1,6 +1,9 @@
-library(pacman)
-p_load(sf, terra, dplyr, purrr, data.table, vtable, skimr, rmapshaper, tigris)
-sf_use_s2(FALSE)
+# library(pacman)
+# p_load(sf, terra, dplyr, purrr, data.table, vtable, skimr, rmapshaper, tigris)
+source("./R/load_packages.r")
+# Uncomment the line below when running the code on triton
+# .libPaths("/ddn/gs1/home/songi2/r-libs")
+# sf_use_s2(FALSE)
 Sys.setenv("TIGRIS_CACHE_DIR" = sprintf("%s/tigris_cache/", Sys.getenv("HOME")))
 
 ## data path determination
@@ -77,7 +80,6 @@ epr.gis <- epr.gis %>%
 # Spatial coord incompleteness
 
 
-
 is.date <- function(x) inherits(x, 'Date')
 
 ## summary tables
@@ -97,9 +99,9 @@ is.date <- function(x) inherits(x, 'Date')
 
 
 ## Location maps
-p_load(ggplot2, tigris)
+# p_load(ggplot2, tigris)
 us_cnty <- tigris::counties(year = 2020) %>%
-    filter(!STATEFP %in% c("02", "72", "78", "15", "60", "69", "66")) %>%
+    dplyr::filter(!STATEFP %in% c("02", "72", "78", "15", "60", "69", "66")) %>%
     st_transform(4326)
 epr_sf <- epr.gis %>%
     st_as_sf(coords = c("gis_longitude", "gis_latitude"), crs = 4326)
@@ -150,15 +152,35 @@ eprs_vals <- eprs %>%
 epr_number_allpresence <- Reduce(intersect, eprs_vals)
 # 1,897 participants are available across attribute tables with 1000+ rows
 
+## Key reference dataset!!! ####
 ## true number of participants, not total recorded locations
 ## 18462
 length(unique(epr.gis$epr_number))
 
 epr_allp_sf = epr.gis %>%
-  filter(epr_number %in% as.integer(epr_number_allpresence)) %>%
+  dplyr::filter(epr_number %in% as.integer(epr_number_allpresence)) %>%
   st_as_sf(coords = c("gis_longitude", "gis_latitude"), crs = 4326)
-epr_allp_sf[us_cnty %>% filter(STATEFP == 37),]
+# In NC
+epr_allp_sf[us_cnty %>% dplyr::filter(STATEFP == 37),]
+# types of enrolment
+unique(epr_allp_sf$gis_study_event)
+# 1,648 participants have full coordinate information
+# across five key events (exposome, enrollment, he, ...)
+# 1,849 participants have four key events
+# Exposome a and b surveys were done (almost) at the same time
+epr_allp_sf %>%
+  st_drop_geometry() %>%
+  dplyr::group_by(epr_number) %>%
+  dplyr::summarize(Nevents = length(unique(gis_study_event))) %>%
+  dplyr::ungroup() %>%
+  dplyr::filter(Nevents >= 4)
 
+epr_allp_sf %>%
+  st_drop_geometry() %>%
+  dplyr::group_by(epr_number) %>%
+  dplyr::summarize(Nevents = length(unique(gis_study_event))) %>%
+  dplyr::ungroup() %>%
+  dplyr::filter(Nevents >= 4)
 
 us_cnty_s <- rmapshaper::ms_simplify(us_cnty, 0.1, keep_shapes = TRUE)
 epr_allp_sf_sub <- epr_allp_sf[us_cnty_s,]
@@ -219,24 +241,24 @@ epr.atc %>%
 
 names(epr.he)
 
-## mental health status: u210a-k, u211-u214.
-epr_he_mental <-
-  epr.he %>%
-  as_tibble %>%
-  select(1, starts_with("he_u21")) %>%
-  mutate(epr_number = as.integer(epr_number)) %>%
-  mutate(across(-1, ~as.integer(.))) %>%
-  mutate(across(-1, ~ifelse(is.na(.), -999, .))) %>%
-  left_join(epr_atc_psych %>% select(1, flag_antidep_1p), by = "epr_number") %>%
-  left_join(epr_atc_psych2p %>% select(1, flag_antidep_2p) %>% unique, by = "epr_number") %>%
-  mutate(he_flsum = rowSums(across(he_u210a_unusual_hyper_PARQ:he_u214_bipolar))) %>%
-  select(1, he_flsum, flag_antidep_1p, flag_antidep_2p, 2:(ncol(.)-4)) %>%
-  mutate(across(starts_with("flag_antidep"), ~ifelse(is.na(.), 0, .)))
 
+
+## Look into the temporal consistency and order
+## Strong assumption: no potential reverse causality
+## Mental health status should follow our exposure of interest
+
+# eb survey:
+# 
+# B032a-B041a: past one year and medication history (anxiety, depression)
+# B052-053: current status, continuing, and suspended are distinguishable
+# E090-E099: stress (E): past month
+# G group: sleep quality + behavior / past month
+# K group: genetic history (proxy of potential concerns)
 epr_eb_mental <-
   epr.eb %>%
   as_tibble %>%
-  select(1, starts_with("eb_e")) %>%
+  select(1, starts_with("eb_e"), starts_with("eb_b03"), starts_with("eb_b04"),
+    starts_with("eb_b05")) %>%
   mutate(epr_number = as.integer(epr_number)) %>%
   mutate(across(-1, ~as.integer(.))) %>%
   mutate(across(-1, ~ifelse(is.na(.), -999, .)))
@@ -252,19 +274,59 @@ antidep_cope <- table(epr_eb_q_psych$flag_antidep_1p, epr_eb_q_psych$eb_e094_goi
 antidep_cope/rowSums(antidep_cope)
 
 
-epr_he_mental
+# he survey:
+# s177-s193: health behaviors (drinking, sleeping, ...)
+# t192-199: family history (well-off, etc.) in youth
+# t200-207: current family history (their own)
+# u208*: self perception and social behaviors
+# u209: compounded occurrences of u208* entries
+# u210: attribution to difficulties
+# u211-212: bipolar history in blood siblings
+## mental health status: u210a-k, u211-u214.
+epr_he_mental <-
+  epr.he %>%
+  as_tibble %>%
+  select(1, starts_with("he_u20"), starts_with("he_u21")) %>%
+  mutate(epr_number = as.integer(epr_number)) %>%
+  mutate(across(-1, ~as.integer(.))) %>%
+  mutate(across(-1, ~ifelse(is.na(.), -999, .))) %>%
+  left_join(epr_atc_psych %>% select(1, flag_antidep_1p), by = "epr_number") %>%
+  left_join(epr_atc_psych2p %>% select(1, flag_antidep_2p) %>% unique, by = "epr_number") %>%
+  mutate(he_flsum = rowSums(across(he_u210a_unusual_hyper_PARQ:he_u214_bipolar))) %>%
+  select(1, he_flsum, flag_antidep_1p, flag_antidep_2p, 2:(ncol(.)-3)) %>%
+  mutate(across(starts_with("flag_antidep"), ~ifelse(is.na(.), 0, .)))
+
+epr_he_behav <-
+  epr.he %>%
+  as_tibble %>%
+  select(1, starts_with("he_s17"), starts_with("he_s19")) %>%
+  mutate(epr_number = as.integer(epr_number)) %>%
+  mutate(across(-1, ~as.integer(.))) %>%
+  mutate(across(-1, ~ifelse(is.na(.), -999, .)))
+
+epr_he_family <-
+  epr.he %>%
+  as_tibble %>%
+  select(1, starts_with("he_t19")) %>%
+  mutate(epr_number = as.integer(epr_number)) %>%
+  mutate(across(-1, ~as.integer(.))) %>%
+  mutate(across(-1, ~ifelse(is.na(.), -999, .)))
+
+skim(epr_he_mental)
+skim(epr_he_behav)
+skim(epr_he_family)
+
+names(epr_he_mental)
 
 table(epr_he_mental$flag_antidep_1p, epr_he_mental$he_flsum)
 table(epr_he_mental$flag_antidep_2p, epr_he_mental$he_flsum)
 # questionnaire gives high frequency of self-reported negative mental health
 # in participants who do not take antidepressants
-# indicative of self-recognition of negative mental health stauts or
-# the importance of willingness to get treatment
+# indicative of self-recognition of negative mental health status or
+# the willingness to get treatment
 
 
-
-
-# temporal inconsistency check
+# Checking temporal inconsistency across survey/event sequences ####
 epr_gis <- epr.gis %>%
   mutate(event_code = case_when(
     gis_study_event == "longest_lived_child" ~ "A",
@@ -290,6 +352,7 @@ epr_gis %>%
   select(epr_number, evdate_diff)
 ## in some cases, health_and_exposure completion date precedes the enrolment
 ## the number is negligible (18/18K+, <0.1 %)
+## heard that it is not unusual
 
 
 ## EB
