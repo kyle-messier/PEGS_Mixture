@@ -212,29 +212,26 @@ epr_allp_sf_ea <-
   dplyr::filter(!is.na(gis_event_date)) %>%
   sf::st_transform("EPSG:5070")
 
-smoke_days_30d <-
+epr_ea_smokeextract <- function(days = 60L) {
   mapply(function(x, y) {
     unlist(query_instant(
     terra::vect(x),
     dir = "~/Documents/input/noaa_hms/processed_all/",
     date_at = as.Date(y),
-    days_before = 30L)) },
+    days_before = days)) },
     epr_allp_sf_ea$geometry,
     epr_allp_sf_ea$gis_event_date)
+}
+
+smoke_days_30d <- epr_ea_smokeextract(30L)
+smoke_days_60d <- epr_ea_smokeextract(60L)
+smoke_days_120d <- epr_ea_smokeextract(120L)
+smoke_days_365d <- epr_ea_smokeextract(365L)
+
 
 saveRDS(smoke_days_30d, "output/smoke_days_30days_ea_nona_addr.rds")
 
-  dplyr::filter(gis_study_event == "current_address_exposome_a") %>%
-  sf::st_transform("EPSG:5070") %>%
-  dplyr::rowwise() %>%
-  dplyr::mutate(
-    smoke_days_1yr = unlist(query_instant(
-    terra::vect(geometry),
-    dir = "~/Documents/input/noaa_hms/processed_all/",
-    date_at = as.Date(gis_event_date),
-    days_before = 365L)))
-
-
+# in-place code example: failed
 epr_allp_sf_ea <-
   epr_allp_sf %>%
   dplyr::filter(gis_study_event == "current_address_exposome_a") %>%
