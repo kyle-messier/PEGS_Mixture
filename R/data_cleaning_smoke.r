@@ -207,6 +207,7 @@ query_instant(
 # small test:
 epr_allp_sf_ea <-
   epr_allp_sf %>%
+  dplyr::mutate(gis_event_date = as.Date(gis_event_date, format = "%m/%d/%Y")) %>%
   dplyr::filter(gis_study_event == "current_address_exposome_a") %>%
   dplyr::filter(!gis_state %in% c("HI", "AK", "GU", "VI", "PR")) %>%
   dplyr::filter(!is.na(gis_event_date)) %>%
@@ -224,9 +225,13 @@ epr_ea_smokeextract <- function(days = 60L) {
 }
 
 smoke_days_30d <- epr_ea_smokeextract(30L)
+saveRDS(smoke_days_30d, "output/smoke_days_30days_ea_nona_addr.rds")
 smoke_days_60d <- epr_ea_smokeextract(60L)
+saveRDS(smoke_days_60d, "output/smoke_days_60days_ea_nona_addr.rds")
 smoke_days_120d <- epr_ea_smokeextract(120L)
+saveRDS(smoke_days_120d, "output/smoke_days_120days_ea_nona_addr.rds")
 smoke_days_365d <- epr_ea_smokeextract(365L)
+saveRDS(smoke_days_365d, "output/smoke_days_365days_ea_nona_addr.rds")
 
 
 saveRDS(smoke_days_30d, "output/smoke_days_30days_ea_nona_addr.rds")
