@@ -31,7 +31,7 @@ mat_euclidean(zin)
 # filldist
 xin = Random.rand(100, 4)
 yin = Random.rand(100)
-zin = Random.rand(100, 3)
+zin = Random.rand(100, 8)
 K = KernelFunctions.GaussianKernel
 a_sigma_in = 2
 b_sigma_in = 16
@@ -39,27 +39,39 @@ a_lambda_in = 1
 b_lambda_in = 0.1
 a_pi0_in = 4
 b_pi0_in = 2
+u_init = 1
 
-@model function skeleton_bkmr(x, y, z, K, a_sigma, b_sigma, a_lambda, b_lambda, a_pi0, b_pi0)
+
+@model function skeleton_bkmr(x, y, z, K, a_sigma, b_sigma, a_lambda, b_lambda, a_pi0, b_pi0, beta = repeat([0.], size(x)[2]), u= u_init)
   nrow, ncol = size(x)
-  
-  u = Random.rand(nrow, 1)
+  tau = 0.01
+  delta = Random.rand(ncol)
+
   Dz = mat_euclidean(z)
   h = Random.rand(nrow, 1)
-  u ~ Uniform(0, 1)
   Σ = u .* K(Dz).metric
-  Σ = round.(Σ, sigdigits = 8)
-  Σ = Symmetric(Σ)
-  h ~ MultivariateNormal(repeat([0.], nrow), Σ)
+  # Σ = round.(Σ, sigdigits = 8)
+  
+  
+  for k ∈ 1:1:ncol
+    beta[k] ~ Normal(0, 1)
+  end
+  u ~ Uniform(0, 1)
+  # h ~ MultivariateNormal(repeat([0.], nrow), Σ)
+  y ~ MvNormal((x * beta), (tau^-2) .* Diagonal(repeat([1], nrow)))
+  tau ~ Uniform(0, 10)
+
+  # Σ = Symmetric(Σ) + Diagonal(ones(nrow))
+  # # modified: Σ = Diagonal(ones(nrow))
+  # lambda = u * (tau ^ -2)
   # cholesky factorization failed...
   # for i ∈ 1:1:nrow
-  y ~ MultivariateNormal(h .+ (x * beta), (tau^-2) .* Diagonal(repeat([1], nrow)))
+  # h .+ (x * beta)
   # end
 
   # variable selection
   # Priors
   tau ~ Gamma(a_sigma, b_sigma)
-  lambda = u * (tau ^ -2)
   lambda ~ Gamma(a_lambda, b_lambda) # lambda=tau sigma^-2 in the original article; tau is u, sigma^-2 is tau
   pi0 ~ Beta(a_pi0, b_pi0)
 
