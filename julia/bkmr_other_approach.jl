@@ -56,17 +56,17 @@ end
     # slab-and-spike prior
     r ~ delta * Normal(0, 1) + (1-delta) * 0.3
     f = cov(gp(r .* ColVecs(Z_transformed')))
-    fx ~ filldist(MvNormal(zeros(n), f), n)
+    fx ~ filldist(MvNormal(zeros(n), Symmetric(f)), n)
 
     # Grouping probabilities (assuming a simple case)
-    π ~ Dirichlet(ones(p) .* 3)  # Adjust as needed
+    # π ~ Dirichlet(ones(p) * 3)  # Adjust as needed
 
     # Covariate effects
     β ~ MvNormal(zeros(k), diagm(ones(k)))
     a ~ Normal(0, 1)
     # Model for the outcome
     for i in 1:n
-        μ = a + dot(X[i, :], β) + fx[i]
+        μ = a + dot(X[i, :], β) + sum(fx[i,:])
         Y[i] ~ Normal(μ, σ²)
     end
 end
@@ -83,12 +83,34 @@ model = bkmr(Y, Z, X)
 # chain = sample(model, NUTS(0.66), 1000)
 
 using Zygote, ReverseDiff
-Turing.setadbackend(:reversediff)
+Turing.setadbackend(:zygote)
 # VI
 # input length mismatch?
 viest = vi(model, ADVI(4, 1000))
 mfest = Variational.meanfield(model)
 
-opt = Variational.DecayedADAGrad(1e-2, 1.1, 0.9)
+# opt = Variational.DecayedADAGrad(1e-2, 1.1, 0.9)
+opt = Variational.TruncatedADAGrad(1e-2, 1.1, 10)
 advi = ADVI(10, 1000)
-qvi = vi(model, advi, mfest; optimizer=opt)
+qvi = vi(model, advi, mfest; opt = opt)
+
+
+# simpler cases
+@model function lmvi(Y, X)
+    n = size(X, 1)
+    k = size(X, 2)
+    β ~ MvNormal(zeros(k), diagm(ones(k)))
+    a ~ Normal(0, 1.)
+    σ² ~ InverseGamma(2, 4)
+    μ = a .+ (X * β)
+    cx = cov(X)
+    for i in 1:1:n
+        Y[i] ~ Normal(μ[i], σ²)
+    end
+end
+
+
+movi = lmvi(Y, X)
+moviest = vi(movi, ADVI(2, 1000))
+using Turing: HMC
+movisamp = sample(movi, NUTS(), 10000)
