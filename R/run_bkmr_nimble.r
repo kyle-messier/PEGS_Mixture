@@ -1,4 +1,11 @@
+if (dir.exists("~/r-libs")) {
+  .libPaths("~/r-libs")
+}
+
 library(nimble)
+# nimbleOptions('showCompilerOutput' = TRUE)
+Sys.setenv(LD_LIBRARY_PATH = paste("/ddn/gs1/home/songi2/nimble-dylib", Sys.getenv("LD_LIBRARY_PATH"), sep = ":"))
+Sys.getenv("LD_LIBRARY_PATH")
 
 # Function to calculate the Euclidean distance matrix
 mat_euclidean <- function(mat) {
@@ -18,6 +25,7 @@ set.seed(123)
 xin <- matrix(runif(100 * 4), nrow = 100)
 yin <- runif(100)
 zin <- matrix(runif(100 * 8), nrow = 100)
+N <- nrow(xin)
 K <- "GaussianKernel"  # Define the Gaussian Kernel function
 a_sigma_in <- 2
 b_sigma_in <- 16
@@ -31,14 +39,13 @@ data_in <-
   list(x = xin, y = yin, z = zin)
 init_in <-
   list(a_pi0 = a_pi0_in, b_pi0 = b_pi0_in, tau = 3, Pi_s = Pi_s_in,
-  Sigma = cor(zin), tau=0.01, beta = c(0,0,0,0), prob_omega = 0.5,
-  mu = rep(0, nrow(xin)),
-  y = rep(0, N))
-const_in <- list(N = nrow(xin), P = ncol(xin), ngroups = 2L)
+  Sigma = cor(zin), tau=0.01, beta = c(1,1,1,1), prob_omega = 0.5,
+  mu = rep(0, nrow(xin)))
+const_in <- list(N = nrow(xin), P = ncol(xin), ngroups = 2L,
+  h = rep(0, 100))
 
 mat_euclidean <- nimbleFunction(
   run = function(mat = double(2)) {
-  returnType(double(2))
   N <- dim(mat)[1]
   res <- matrix(0, N, N)
   for (i in 1:N) {
@@ -48,6 +55,7 @@ mat_euclidean <- nimbleFunction(
     }
   }
   return(res)
+  returnType(double(2))
 }
 )
 Cmat_euclidean <- compileNimble(mat_euclidean)
@@ -65,9 +73,11 @@ nimble_model <- nimbleCode({
   }  
   
   u ~ dunif(0, 1)
-  e ~ dnorm(0, 1)
+  #e ~ dnorm(0, 1)
   Sigma <- u * mat_euclidean(x)
-  beta[1:P] ~ dunif(-1, 1)
+  for (j in 1:P) {
+    beta[j] ~ dunif(-1, 1)
+  }
   tau ~ dgamma(1, 0.0005)
   a_pi0 ~ dunif(0, 1)
   b_pi0 ~ dunif(0, 1)
@@ -75,16 +85,15 @@ nimble_model <- nimbleCode({
   for (d in 1:P) {
     delta[d] ~ dbern(pi0)
   }
-
+  
   for (k in 1:N) {
-    h[k] ~ dnorm(0, 1)
+    #h[k] ~ dnorm(0, 1)
     #for (p in 1:P) {
-    mu[k] <- e + h[k] + t(x[k,1:P]) * beta[1:P]
+    mu[k] <- hx[k] + inprod(beta[1:P], x[k,])
     #}
   }
   yprec[1:N,1:N] <- (tau^-2) * diag(rep(1, N))
-  y[1:N] ~ dmnorm(mu[1:N], Sigma[1:N,1:N])
-
+  y[1:N] ~ dmnorm(mu[1:N], Sigma[1:N, 1:N])
 
 })
 
@@ -94,7 +103,7 @@ nimble_fit <- nimble::nimbleModel(code = nimble_model,
   data = data_in,
   inits = init_in,
   constants = const_in,
-  check= F)
+  check = TRUE)
 
 nimble_mcmcrun <- nimble::nimbleMCMC(
   model = nimble_fit,
@@ -254,3 +263,30 @@ stan_model <- stan_model(model_code = zinf)
 stan_samples <- sampling(stan_model, data = nn, chains = 4, iter = 10000, warmup = 3000, thin = 1)
 
 bayesplot::mcmc_hist_by_chain(stan_samples)
+
+
+
+
+####
+
+library(NLinteraction)
+set.seed(2024)
+n = 1000
+p = 5
+pc = 3
+
+X = matrix(rnorm(n*p), n, p)
+
+C = matrix(rnorm(n*pc), nrow=n)
+bC = matrix(runif(pc, -3, 3), ncol = 1)
+
+TrueH = function(X) {
+  return(1.5*(exp(X[,2])*log(4+X[,3])) - 1.6*(X[,4]^2 * X[,5]))
+}
+
+Y = 5 + crossprod(t(C), bC) + TrueH(X) + rnorm(n)
+
+NLmod2 = NLint(Y=Y, X=X, C=C, nIter=2000, nBurn=1000, thin=2, nChains=4, ns=4)
+NLmod3 = NLint(Y=Y, X=X, C=C, nIter=2000, nBurn=1000, thin=2, nChains=4, ns=2)
+
+NLinteraction::plotSurface2d(NLmod2, X, C, 2, 3)
