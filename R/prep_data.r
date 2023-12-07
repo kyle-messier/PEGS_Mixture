@@ -109,11 +109,19 @@ epr_he_mental <-
 #   select(1, he_flsum, flag_antidep_1p, flag_antidep_2p, 2:(ncol(.)-4)) %>%
 #   mutate(across(starts_with("flag_antidep"), ~ifelse(is.na(.), 0, .)))
 
+# eb survey:
+# 
+# B032a-B041a: past one year and medication history (anxiety, depression)
+# B052-053: current status, continuing, and suspended are distinguishable
+# E090-E099: stress (E): past month
+# G group: sleep quality + behavior / past month
+# K group: genetic history (proxy of potential concerns)
 epr_eb_mental <-
   epr.eb %>%
   as_tibble %>%
-  select(1, starts_with("eb_e")) %>%
-  mutate(epr_number = as.character(epr_number)) %>%
+  select(1, starts_with("eb_e"), starts_with("eb_b03"), starts_with("eb_b04"),
+    starts_with("eb_b05")) %>%
+  mutate(epr_number = (epr_number)) %>%
   mutate(across(-1, ~as.integer(.))) %>%
   mutate(across(-1, ~ifelse(is.na(.), -999, .)))
 
@@ -138,9 +146,9 @@ epr_gis_last <- epr_gis %>%
   filter(event_code == event_code[n()]) %>%
   ungroup() %>%
   filter(!is.na(epr_number))
-epr_gis_first <- epr_gis %>%
+epr_gis_ea <- epr_gis %>%
   group_by(epr_number) %>%
-  filter(event_code == event_code[1]) %>%
+  filter(event_code == "E") %>%
   ungroup() %>%
   filter(!is.na(epr_number))
 
@@ -172,7 +180,7 @@ epr_earth <- epr.earthdata %>%
   arrange(epr_number, event_code) %>%
   mutate(epr_number = as.character(epr_number)) %>%
   group_by(epr_number) %>%
-  filter(event_code == "E") %>%
+  filter(event_code == event_code[n()]) %>%
   ungroup()
 
 
@@ -213,14 +221,18 @@ epr_hazards <- epr.hazards %>%
 epr_he_mental <-
   epr.he %>%
   as_tibble %>%
+  mutate(he_date_completed = as.Date(he_date_completed)) %>%
+  group_by(epr_number) %>%
+  filter(he_date_completed == max(he_date_completed)) %>%
+  ungroup() %>%
   select(1, starts_with("he_u20"), starts_with("he_u21")) %>%
   mutate(epr_number = (epr_number)) %>%
   mutate(across(-1, ~as.integer(.))) %>%
   mutate(across(-1, ~ifelse(is.na(.), -999, .))) %>%
-  left_join(epr_atc_psych %>% select(1, flag_antidep_1p), by = "epr_number") %>%
-  left_join(epr_atc_psych2p %>% select(1, flag_antidep_2p) %>% unique, by = "epr_number") %>%
+  # left_join(epr_atc_psych %>% select(1, flag_antidep_1p), by = "epr_number") %>%
+  # left_join(epr_atc_psych2p %>% select(1, flag_antidep_2p) %>% unique, by = "epr_number") %>%
   mutate(he_flsum = rowSums(across(he_u210a_unusual_hyper_PARQ:he_u214_bipolar))) %>%
-  select(1, he_flsum, flag_antidep_1p, flag_antidep_2p, 2:(ncol(.)-3)) %>%
+  # select(1, he_flsum, flag_antidep_1p, flag_antidep_2p, 2:(ncol(.)-3)) %>%
   mutate(across(starts_with("flag_antidep"), ~ifelse(is.na(.), 0, .)))
 
 epr_he_behav <-
@@ -241,20 +253,57 @@ epr_he_family <-
 
 
 
+## Basic personal information
+epr_bcbb <- epr.bcbb.map |>
+  mutate(across(-1:-2, ~as.integer(.))) |>
+  transmute(
+    epr_number = epr_number,
+    gender_legacy = factor(gender_legacy, levels = 0:1, labels = c("Male", "Female")),
+    race = factor(race, levels = 1:6,
+        labels = c("AIAN", "Asian", "Black", "NHPI", "White", "Multiple")),
+    birth_date = birth_date#as.Date(birth_date, format = "%m/%d/%y")
+  )
+epr_bcbb
+
 
 ## join
+
+epr_allp_sf <- epr.gis %>%
+  dplyr::filter(epr_number %in% as.integer(epr_number_allpresence)) %>%
+  st_as_sf(coords = c("gis_longitude", "gis_latitude"), crs = 4326)
+
+
+epr_allp_sf_ea <-
+  epr_allp_sf %>%
+  dplyr::mutate(gis_event_date = as.Date(gis_event_date, format = "%m/%d/%Y")) %>%
+  dplyr::filter(gis_study_event == "current_address_exposome_a") %>%
+  dplyr::filter(!gis_state %in% c("HI", "AK", "GU", "VI", "PR")) %>%
+  dplyr::filter(!is.na(gis_event_date)) %>%
+  sf::st_transform("EPSG:5070")
+
+epr_allp_hms <- cbind(epr_allp_sf_ea, hms_smoke_exp) |>
+  mutate(epr_number = as.character(epr_number))
+#     mutate(geoid10 = as.character(gis_geoid10)) |>
+#     left_join(firerisk, by = c("geoid10" = "geoid10"))
+
+
+
+
 epr_atc_psychs <- epr_atc_psych %>%
   select(epr_number) %>%
   unique() %>%
   as.data.table()
-epr_console <- 
-  epr_atc_psychs %>%
-  left_join(epr_gis_first) %>%
-  left_join(epr_atc_psych %>% select(1, flag_antidep_1p) %>% unique()) %>%
-  left_join(epr_he_mental) %>%
-  left_join(epr_eji) %>%
-  left_join(epr_svi) %>%
-  left_join(epr_hazards) %>%
-  left_join(epr_earth)
+epr_console <-
+  epr_allp_hms %>%
+  # epr_atc_psychs %>%
+  # left_join(epr_gis_ea) %>%
+  # left_join(epr_atc_psych %>% select(1, flag_antidep_1p) %>% unique()) %>%
+  inner_join(epr_eb_mental) %>%
+  inner_join(epr_he_mental) %>%
+  inner_join(epr_eji) %>%
+  inner_join(epr_svi) %>%
+  inner_join(epr_hazards) %>%
+  inner_join(epr_earth) %>%
+  inner_join(epr_bcbb)
 
 

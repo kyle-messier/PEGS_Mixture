@@ -69,9 +69,13 @@ epr_allp_hms <- cbind(epr_allp_sf_ea, hms_smoke_exp) |>
 
 
 epr_console_sub <- epr_console %>%
-  filter(gis_study_event == "current_address_exposome_a") %>%
-  select(epr_number, flag_antidep_1p, 18:34, 36:593) %>%
-  mutate(across(-1, ~ifelse(is.na(.), 0, as.numeric(.))))
+  # filter(gis_study_event == "current_address_exposome_a") %>%
+  select(epr_number, gis_event_date, 18:34, 36:ncol(.)) %>%
+  mutate(across(c(-1:-2, -(ncol(.)-2):-ncol(.)),
+                ~ifelse(is.na(.), 0, as.numeric(.)))) %>%
+  filter(birth_date != ".M" & !is.na(gender_legacy) & !is.na(race)) %>%
+  mutate(birth_date = as.Date(birth_date)) %>%
+  mutate(age_yr = (gis_event_date - birth_date) / 365.2425)
 epr_console_mv <- sapply(epr_console_sub, function(x) length(unique(x)) > 1)
 epr_console_sub <- epr_console_sub[, ..epr_console_mv] #%>%
   # mutate(across(seq_len(ncol(.))[length(unique(.)) > 2], ~as.vector(scale(.))))
@@ -85,25 +89,55 @@ epr_console_sub_noe <-
   # mutate(geoid10 = as.character(gis_geoid10)) %>%
   # left_join(firerisk, by = c("geoid10" = "geoid10"))
 
-pegs_all_join <- right_join(epr_console_sub_noe, epr_allp_hms)
+pegs_all_join <- left_join(epr_console_sub_noe, epr_allp_hms) |>
+  # filter(eb_b053_med_depression > 0) |>
+  # filter(he_s179a_smoke_status_derived > 0) |>
+  filter(eb_e095_unable_to_cope > 0)
+dim(pegs_all_join)
 
 
 # too many NAs (except for one record, actually)
 # why were there too many NAs in GIS covariates?
 pegs_X <- pegs_all_join |>
   st_drop_geometry() |>
-  select(svi_2018_EP_GROUPQ, smoke_d365) |>
+  select(svi_2018_EP_UNEMP, eji_EP_MHLTH, eji_EP_MINRTY, eji_EP_AGE65, smoke_d365) |>
   as.matrix()
-pegs_X[,1] <- rgamma(nrow(pegs_X), 1, 0.3)
+# pegs_X[,1] <- rgamma(nrow(pegs_X), 1, 0.3)
 summary(pegs_X)
-pegs_C <- pegs_all_join |>
-  st_drop_geometry() |>
-  select(all_of(seq(53, 72))) |>
-  as.matrix()
+pegs_C <- pegs_all_join %>%
+  st_drop_geometry() %>%
+  select(all_of(seq(53, 72)), starts_with("earthdata_"), gender_legacy, race, age_yr, eji_EP_DIABETES, eji_EP_CANCER) %>%
+  mutate(across(starts_with("earthdata"), ~as.vector(scale(.)))) %>%
+  model.matrix(reformulate(termlabels = colnames(.), intercept = FALSE), .)
+  # as.matrix() %>%
 pegs_Y <- pegs_all_join |>
   st_drop_geometry() |>
-  select(flag_antidep_1p) |>
+  select(eb_e095_unable_to_cope) |>
+  # select(eb_b053_med_depression) |>
+  # mutate(eb_b053_med_depression = ifelse(eb_b053_med_depression == 3, 1, 0)) |>
   as.matrix()
 
 # nltest
-pegs_nlint <- NLint(pegs_Y, pegs_X, pegs_C, nChains = 4, nIter = 2000, nBurn = 500, thin = 5, ns = 2)
+Sys.setenv(MKL_NUM_THREADS=floor(parallel::detectCores()* 1.25))
+pegs_nlint <- NLint(pegs_Y, pegs_X, pegs_C, nChains = 4, nIter = 2000, nBurn = 500, thin = 2, ns = 3)
+# took 1.3 hours with 224 threads + MKL on Triton
+
+saveRDS(pegs_nlint, file = "./output/NLint_trial_12072023.rds", compress = "xz")
+
+
+# 1: unemployment at census tract
+# 2: bad mental health status at census tract
+# 3: % minority
+# 4: % elderly
+# 5: total smoke exposures (all kind) in 1-year
+
+oldpar <- par()
+par(mfrow = c(2, 2))
+NLinteraction::plotSurface2dMean(pegs_nlint, pegs_X, pegs_C, j1 = 1, j2 = 5, xlab = "UNEMP", ylab = "SMOKE")
+NLinteraction::plotSurface2dMean(pegs_nlint, pegs_X, pegs_C, j1 = 2, j2 = 5, xlab = "MHLTH", ylab = "SMOKE")
+NLinteraction::plotSurface2dMean(pegs_nlint, pegs_X, pegs_C, j1 = 3, j2 = 5, xlab = "MINRTY", ylab = "SMOKE")
+NLinteraction::plotSurface2dMean(pegs_nlint, pegs_X, pegs_C, j1 = 4, j2 = 5, xlab = "ELDERLY", ylab = "SMOKE")
+par(oldpar)
+
+# TODO: extract smoke exposure at Medium+ and Severe
+# TODO: add flood variable from FEMA
