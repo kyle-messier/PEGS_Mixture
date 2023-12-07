@@ -1,4 +1,4 @@
-source("./R/prep_bkmr_data.r")
+source("./R/prep_data.r")
 
 pkgs <- c("bkmr", "data.table", "dplyr", "tidytable", "sf", "broom")
 invisible(sapply(pkgs, library, character.only = TRUE))

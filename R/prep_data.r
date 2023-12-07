@@ -1,11 +1,13 @@
-library(pacman)
-p_load(sf, terra, dplyr, purrr, tidytable, data.table, vtable, skimr, rmapshaper, tigris)
+
+pkgs <- c("sf", "terra", "dplyr", "purrr", "tidytable",
+          "data.table", "vtable", "skimr", "rmapshaper", "tigris")
+invisible(sapply(pkgs, library, quietly = TRUE, character.only = TRUE))
 sf_use_s2(FALSE)
 Sys.setenv("TIGRIS_CACHE_DIR" = sprintf("%s/tigris_cache/", Sys.getenv("HOME")))
 
 ## data path determination
 ## compute_mode 1 (wine mount), compute_mode 2 (hpc compute node), 3 (container internal)
-COMPUTE_MODE <- 1
+COMPUTE_MODE <- 2
 path_pegs <-
   ifelse(COMPUTE_MODE == 1,
   "/Volumes/PEGS/",
@@ -136,6 +138,11 @@ epr_gis_last <- epr_gis %>%
   filter(event_code == event_code[n()]) %>%
   ungroup() %>%
   filter(!is.na(epr_number))
+epr_gis_first <- epr_gis %>%
+  group_by(epr_number) %>%
+  filter(event_code == event_code[1]) %>%
+  ungroup() %>%
+  filter(!is.na(epr_number))
 
 epr_eji <- epr.eji %>%
   mutate(event_code = case_when(
@@ -165,7 +172,7 @@ epr_earth <- epr.earthdata %>%
   arrange(epr_number, event_code) %>%
   mutate(epr_number = as.character(epr_number)) %>%
   group_by(epr_number) %>%
-  filter(event_code == event_code[n()]) %>%
+  filter(event_code == "E") %>%
   ungroup()
 
 
@@ -194,11 +201,45 @@ epr_hazards <- epr.hazards %>%
     gis_study_event == "current_address_exposome_a" ~ "E",
     TRUE ~ NA
   )) %>%
+  # 12062023: valid values only
+  filter(!is.na(hazards_pm_25_ugm3)) %>%
   mutate(epr_number = as.character(epr_number)) %>%
-  arrange(epr_number, event_code) %>%
-  group_by(epr_number) %>%
-  filter(event_code == event_code[n()]) %>%
-  ungroup()
+  arrange(epr_number, event_code) #%>%
+  #group_by(epr_number) %>%
+  #filter(event_code == "E") %>%
+  #ungroup()
+
+# mental health related outcomes
+epr_he_mental <-
+  epr.he %>%
+  as_tibble %>%
+  select(1, starts_with("he_u20"), starts_with("he_u21")) %>%
+  mutate(epr_number = (epr_number)) %>%
+  mutate(across(-1, ~as.integer(.))) %>%
+  mutate(across(-1, ~ifelse(is.na(.), -999, .))) %>%
+  left_join(epr_atc_psych %>% select(1, flag_antidep_1p), by = "epr_number") %>%
+  left_join(epr_atc_psych2p %>% select(1, flag_antidep_2p) %>% unique, by = "epr_number") %>%
+  mutate(he_flsum = rowSums(across(he_u210a_unusual_hyper_PARQ:he_u214_bipolar))) %>%
+  select(1, he_flsum, flag_antidep_1p, flag_antidep_2p, 2:(ncol(.)-3)) %>%
+  mutate(across(starts_with("flag_antidep"), ~ifelse(is.na(.), 0, .)))
+
+epr_he_behav <-
+  epr.he %>%
+  as_tibble %>%
+  select(1, starts_with("he_s17"), starts_with("he_s19")) %>%
+  mutate(epr_number = (epr_number)) %>%
+  mutate(across(-1, ~as.integer(.))) %>%
+  mutate(across(-1, ~ifelse(is.na(.), -999, .)))
+
+epr_he_family <-
+  epr.he %>%
+  as_tibble %>%
+  select(1, starts_with("he_t19")) %>%
+  mutate(epr_number = (epr_number)) %>%
+  mutate(across(-1, ~as.integer(.))) %>%
+  mutate(across(-1, ~ifelse(is.na(.), -999, .)))
+
+
 
 
 ## join
@@ -208,7 +249,7 @@ epr_atc_psychs <- epr_atc_psych %>%
   as.data.table()
 epr_console <- 
   epr_atc_psychs %>%
-  left_join(epr_gis_last) %>%
+  left_join(epr_gis_first) %>%
   left_join(epr_atc_psych %>% select(1, flag_antidep_1p) %>% unique()) %>%
   left_join(epr_he_mental) %>%
   left_join(epr_eji) %>%
