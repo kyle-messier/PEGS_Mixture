@@ -267,6 +267,19 @@ epr_bcbb
 
 
 ## join
+eprs <- 
+  cbind(obj.names, obj.sizes) %>%
+  filter(V1 > 1000) %>%
+  .$value %>%
+  grep("epr", ., value = TRUE) %>%
+  .[!grepl("meta", .)]
+eprs_vals <- eprs %>%
+  lapply(get) %>%
+  lapply(as_tibble) %>%
+  lapply(function(x) x %>% select(epr_number)) %>%
+  lapply(unlist) 
+
+epr_number_allpresence <- Reduce(intersect, eprs_vals)
 
 epr_allp_sf <- epr.gis %>%
   dplyr::filter(epr_number %in% as.integer(epr_number_allpresence)) %>%
