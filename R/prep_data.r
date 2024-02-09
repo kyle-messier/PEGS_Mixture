@@ -47,6 +47,58 @@ epr.gis <- epr.gis %>%
   mutate(gis_event_date = as.Date(gis_event_date, format = "%M/%d/%Y"))
 is.date <- function(x) inherits(x, 'Date')
 
+## GIS record history
+epr.gis.hist <- epr.gis |>
+  mutate(across(ends_with("_date"), ~as.POSIXct(as.character(.), format = "%Y-%m-%d"))) |>
+  mutate(gis_duration = difftime(gis_end_date, gis_start_date, units = "days"))
+
+epr.gis.hist |>
+  group_by(gis_study_event) |>
+  summarize(mean_duration = mean(gis_duration, na.rm = T))
+epr.gis.hist |>
+  group_by(gis_study_event) |>
+  summarize(N = n())
+# How many participants reported child/adult residence?
+epr.gis.hist |>
+  filter(endsWith(gis_study_event, "exposome_a")) |>
+  group_by(epr_number) |>
+  summarize(N = (n() == 3)) |>
+  ungroup() |>
+  _$N |>
+  sum()
+
+## distance calc (+ excluding one-per-participant records)
+## + indiv. char
+epr.bcbb.ind <- epr.bcbb.map |>
+  select(1:42, 57:65, 68:92) |>
+  mutate(epr_number = as.character(epr_number))
+
+epr_reloc <-
+  epr.gis.hist |>
+  mutate(epr_number = as.character(epr_number)) |>
+  group_by(epr_number) |>
+  filter(n() != 1L) |>
+  arrange(epr_number, gis_start_date) |>
+  mutate(gis_lat_lag = lag(gis_latitude),
+         gis_lon_lag = lag(gis_longitude)) |>
+  rowwise() |>
+  mutate(
+    reloc_dist =
+    geosphere::distGeo(
+      c(gis_longitude, gis_latitude),
+      c(gis_lon_lag, gis_lat_lag)
+    )
+  ) |>
+  ungroup() |>
+  left_join(epr.bcbb.ind, by = c("epr_number"))
+
+# 660 withdrawn
+table(epr_reloc$withdrawal_date) |> _[-1] |> sum()
+table(epr_reloc$sex_derived)
+
+
+
+
 
 ## outcomes
 ### ATC

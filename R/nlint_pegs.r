@@ -29,7 +29,7 @@ epr.gis <- epr.gis %>%
 epr_sf <- epr.gis %>%
     st_as_sf(coords = c("gis_longitude", "gis_latitude"), crs = 4326)
 
-eprs <- 
+eprs <-
   cbind(obj.names, obj.sizes) %>%
   filter(V1 > 1000) %>%
   .$value %>%
@@ -60,6 +60,15 @@ epr_allp_sf_ea <-
   dplyr::filter(!gis_state %in% c("HI", "AK", "GU", "VI", "PR")) %>%
   dplyr::filter(!is.na(gis_event_date)) %>%
   sf::st_transform("EPSG:5070")
+
+epr_allp_sf_ea |>
+  terra::vect() |>
+  terra::project("EPSG:4326") |>
+  terra::plet()
+
+# Exposome survey A's state distribution (mainland only)
+table(epr_allp_sf_ea$gis_state)
+
 
 epr_allp_hms <- cbind(epr_allp_sf_ea, hms_smoke_exp) |>
   mutate(epr_number = as.character(epr_number))
