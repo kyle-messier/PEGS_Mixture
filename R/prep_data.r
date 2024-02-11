@@ -96,7 +96,12 @@ epr_reloc <-
 table(epr_reloc$withdrawal_date) |> _[-1] |> sum()
 table(epr_reloc$sex_derived)
 
-
+#
+epr.gis.he <- epr.gis %>%
+  mutate(epr_number = as.character(epr_number)) %>%
+  filter(grepl("health_and_exposure", gis_study_event)) %>%
+  inner_join(epr.he, by = "epr_number") %>%
+  filter(gis_quality == "residential")
 
 
 

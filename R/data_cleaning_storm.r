@@ -45,9 +45,12 @@ csv_locs <- quicklist(dir_input, "locations") |>
 # fwrite(csv_fatal, "input/noaastorm/storm_fatal_all.csv.gz")
 # fwrite(csv_locs, "input/noaastorm/storm_locs_all.csv.gz")
 
+# load file
+csv_details <- readRDS("output/noaa_stormdb.rds")
+
 unique(csv_details$EVENT_TYPE)
-csv_details[EVENT_TYPE== "Heat", ]
-csv_details[EVENT_TYPE== "Flood", ]
+csv_details[EVENT_TYPE == "Heat", ]
+csv_details[EVENT_TYPE == "Flood", ]
 unique(csv_details$DAMAGE_PROPERTY)
 
 # property damage cleaning
@@ -88,3 +91,27 @@ csv_details[!is.na(TOR_WIDTH) & TOR_WIDTH > 0,
   terra::vect(crs = "EPSG:4326", type = "lines") %>%
   plot()
   # plot(xlim = c(-90, -80), ylim = c(32, 38))
+
+
+## Intersection of noaa and fema
+years <- seq(2000, 2023)
+map_noaa <- csv_details[, c("BEGIN_LON", "BEGIN_LAT", "YEAR", "EVENT_TYPE")] %>%
+  terra::vect(geom = c("BEGIN_LON", "BEGIN_LAT"), crs = "EPSG:4326") %>%
+  na.omit(geom = TRUE)
+par(mfcol = c(5, 6))
+for (i in years) {
+  mapsf::mf_map(
+    sf::st_as_sf(map_noaa[map_noaa$YEAR == i & grepl("(Storm|storm|STORM)", map_noaa$EVENT_TYPE), ]),
+    type = "base",
+    cex = 0.01,
+    xlim = c(-128, -64), ylim = c(22, 52))
+}
+
+
+map_fema <- data.table::fread("input/fema/IndividualAssistanceHousingRegistrantsLargeDisasters.csv")
+map_fema <- data.table::fread("input/fema/HousingAssistanceRenters.csv")
+map_fema <- data.table::fread("input/fema/DisasterDeclarationsSummaries.csv")
+map_fema[grepl("(S|s)torm", incidentType), c("fyDeclared")] %>%
+  table
+map_fema[, c("fyDeclared")] %>%
+  table
