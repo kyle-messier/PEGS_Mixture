@@ -56,10 +56,10 @@ unique(csv_details$DAMAGE_PROPERTY)
 # property damage cleaning
 # TODO: check if as-then or standardized dollar values
 csv_details2 <- csv_details[,
-list(damage_property = substr(DAMAGE_PROPERTY, 1, nchar(DAMAGE_PROPERTY) - 1),
-     damage_property_unit = substr(DAMAGE_PROPERTY, nchar(DAMAGE_PROPERTY), nchar(DAMAGE_PROPERTY)),
-     damage_property = as.numeric(damage_property),
-     damage_property_unit = ifelse())]
+`:=`(damage_property = substr(DAMAGE_PROPERTY, 1, nchar(DAMAGE_PROPERTY) - 1),
+     damage_property_unit = substr(DAMAGE_PROPERTY, nchar(DAMAGE_PROPERTY), nchar(DAMAGE_PROPERTY)))][,
+`:=`(damage_property = as.numeric(damage_property),
+     damage_property_unit = plyr::mapvalues(damage_property_unit, c("K", "M", "B"), c(1e3, 1e6, 1e9)))]
 
 # unusual cases: property unit ends with H or h (houses?)
 csv_details |>
@@ -188,8 +188,8 @@ map_noaa_l <- copy(csv_details_sub2) %>%
   dplyr::rowwise() %>%
   dplyr::mutate(geometry = list(sf::st_linestring(matrix(c(BEGIN_LON, BEGIN_LAT, END_LON, END_LAT), ncol = 2, byrow = TRUE)))) %>%
   dplyr::ungroup() %>%
-  sf::st_as_sf(sf_column_name = "geometry")
-
+  sf::st_as_sf(sf_column_name = "geometry") %>%
+  sf::st_set_crs("EPSG:4326")
 
 map_noaa_p <- copy(csv_details_sub2) %>%
   tidytable::filter((!is.na(BEGIN_LON) & is.na(END_LON)) | (BEGIN_LON == END_LON & BEGIN_LAT == END_LAT)) %>%
@@ -197,7 +197,8 @@ map_noaa_p <- copy(csv_details_sub2) %>%
   dplyr::rowwise() %>%
   dplyr::mutate(geometry = list(sf::st_point(matrix(c(BEGIN_LON, BEGIN_LAT), ncol = 2, byrow = TRUE)))) %>%
   dplyr::ungroup() %>%
-  sf::st_as_sf(sf_column_name = "geometry")
+  sf::st_as_sf(sf_column_name = "geometry") %>%
+  sf::st_set_crs("EPSG:4326")
 
 
 ## point + line
@@ -215,8 +216,17 @@ point_sub_v <- point_sub[, c("BEGIN_LON", "BEGIN_LAT")] %>%
 point_sub_v <- cbind(point_sub_v, point_sub)
 
 
+par(mfcol = c(1, 1))
+map_noaa_l %>%
+  dplyr::filter(event_re == "Tornado") %>%
+  mapsf::mf_map(lwd = 0.8, xlim = c(-128, -64), ylim = c(22, 50))
+map_noaa_l %>%
+  dplyr::filter(event_re == "Thunderstorm") %>%
+  mapsf::mf_map(lwd = 0.8, xlim = c(-128, -64), ylim = c(22, 50))
+
 
 ##
+# png("output/noaa_tornado.png", width = 12, height = 10, units= "in", res = 508)
 par(mfcol = c(5, 4))
 for (i in years) {
   mapsf::mf_map(
@@ -225,22 +235,65 @@ for (i in years) {
     lwd = 0.8,
     xlim = c(-128, -64), ylim = c(22, 52))
   mapsf::mf_map(
-    map_noaa_l %>% dplyr::filter(YEAR == i & event_re == "Tornado"),
+    map_noaa_p %>% dplyr::filter(YEAR == i & event_re == "Tornado"),
     add = TRUE,
     cex = 0.2,
     col = "red",
     pch = 19
   )
 }
+# dev.off()
 
+# png("output/noaa_thunderstorm.png", width = 12, height = 10, units= "in", res = 508)
 par(mfcol = c(5, 4))
 for (i in years) {
-  noaa_sf <- sf::st_as_sf(map_noaa[map_noaa$YEAR == i & map_noaa$event_re == "Flood", ])
-  # print(nrow(noaa_sf))
-  # if (nrow(noaa_sf) == 0) next
   mapsf::mf_map(
-    noaa_sf,
+    map_noaa_l %>% dplyr::filter(YEAR == i & event_re == "Thunderstorm"),
     type = "base",
-    cex = 0.01,
+    lwd = 0.8,
     xlim = c(-128, -64), ylim = c(22, 52))
+  mapsf::mf_map(
+    map_noaa_p %>% dplyr::filter(YEAR == i & event_re == "Thunderstorm"),
+    add = TRUE,
+    cex = 0.2,
+    col = "red",
+    pch = 19
+  )
 }
+# dev.off()
+
+
+## count
+ncp <- sf::st_set_crs(ncp, "EPSG:5070")
+
+map_noaa_lt <- sf::st_transform(map_noaa_l, "EPSG:5070")
+map_noaa_pt <- sf::st_transform(map_noaa_p, "EPSG:5070")
+
+ncpb <- sf::st_buffer(ncp, units::set_units(30, "km")) %>%
+  dplyr::mutate(n_l_ewe = lengths(sf::st_intersects(geom, map_noaa_lt))) %>%
+  dplyr::mutate(n_p_ewe = lengths(sf::st_intersects(geom, map_noaa_pt)))
+
+years <- seq(2001, 2023)
+lyears <- split(years, years) %>%
+  lapply(function(tg) {
+    na0 <- function(x) ifelse(is.na(x), 0, x)
+    nck <-
+      sf::st_buffer(ncp, units::set_units(20, "km")) %>%
+      dplyr::mutate(
+        n_l_ewe = lengths(sf::st_intersects(geom, map_noaa_lt %>% dplyr::filter(YEAR == tg)))
+      ) %>%
+      dplyr::mutate(
+        n_p_ewe = lengths(sf::st_intersects(geom, map_noaa_pt %>% dplyr::filter(YEAR == tg)))
+      ) %>%
+      dplyr::mutate(n_ewe = na0(n_l_ewe) + na0(n_p_ewe))
+    names(nck)[ncol(nck)] <- sprintf("n_ewe_%d", tg)
+    return(nck)
+  })
+
+par(mfcol = c(4, 6))
+for (y in years) {
+  mapsf::mf_choro(lyears[[y - 2000]], sprintf("n_ewe_%d", y),
+  breaks = c(0, 25, 50, 75, 100, 150, 200), cex = 0.05, pch = 19)
+}
+
+# TODO: by intensity

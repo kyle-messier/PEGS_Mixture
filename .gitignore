@@ -4,6 +4,7 @@
 ._*
 /output/*.html
 /output/*.txt
+/output/*.png
 **/.DS_Store
 /.DS_Store
 
