@@ -6,3 +6,5 @@
 /output/*.txt
 **/.DS_Store
 /.DS_Store
+
+julia/example*
