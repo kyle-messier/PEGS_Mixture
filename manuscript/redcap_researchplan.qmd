@@ -13,14 +13,14 @@ author:
 
 # Background/study rationale
 
-Extreme weather events have increasingly gained attention from research communities across environmental epidemiology, health geography, and public health in relation to climate change. Most studies assess the mental health effect of extreme weather by accounting for the extreme weather event as a single separate event. This practice may pose the possibility of either inflated or deflated effects on stress level as residential relocation and the length of residence could affect the heterogeneity in vulnerability and response to stress among individuals depending on adaptation or habituation. This study aims to account for residential history as an effect modifier of the main effect of exposure to the local intensity of extreme weather events on stress levels. Using the Personalized Environment and Gene Study data, we will examine the hypothesis by leveraging residential relocations derived from addresses at study dates in PEGS.
+Extreme weather events (EWE) have increasingly gained attention from research communities across environmental epidemiology, health geography, and public health in relation to climate change. Most studies assess the mental health effect of extreme weather by accounting for the extreme weather event as a single separate event. This practice may pose the possibility of either inflated or deflated effects on stress level as residential relocation and the length of residence could affect the heterogeneity in vulnerability and response to stress among individuals depending on adaptation or habituation. This study aims to account for residential history as an effect modifier of the main effect of exposure to the local intensity of extreme weather events on stress levels. Using the Personalized Environment and Gene Study data, we will examine the hypothesis by leveraging residential relocations derived from addresses at study dates in Personalized Environment and Gene Study (PEGS).
 
 
 # Study hypothesis(es) to be tested
 We pose the following hypotheses:
 
 - The stress level of individuals is associated with recent exposure to extreme weather events.
-- The association between the stress level of individuals and the extreme weather events is mediated by residential history.
+- The association between the stress level of individuals and the extreme weather events is mediated by cumulative exposure to EWE derived from residential history.
 
 # Specific aims and plans
 
@@ -59,7 +59,7 @@ We request following variables for the analysis:
 
 # Description of desired populations (gender, race/ethnicity, age, genotype, phenotype, etc.)
 
-Since we are interested in the general population, we do not have any specific criteria for the desired populations. We will include all participants who have completed the health and exposure survey and have the residential history data. For sensitivity analysis, we will request genotypes (single nucleotide polymorphisms) for controlling confounders. We expect that the sample size with full covariate data will be more than 1,000.
+Since we are interested in the general population, we do not have any specific criteria for the desired populations. We will include all participants who have completed the health and exposure survey and have the residential history data. For sensitivity analysis, we will request genotypes (single nucleotide polymorphisms) for controlling confounders. We expect that the sample size with full covariate data are more than 1,000.
 
 
 
@@ -75,7 +75,7 @@ The duration of residence will be measured by the time difference between the da
 
 
 # Statistical analysis plan including power analysis
-Multiple regression analysis with covariate groups and sensitivity analysis. 
+G-computation (or G-formula) models are used to examine the effect modification of the cumulative exposure to extreme weather events assessed from NOAA Storm Events Database. Stress scores will be considered ordinal and continuous variable, each of which will be analyzed with multinomial logistic and quantile regression models, respectively. These models will serve as a base model for g-computation. Treatment regime is derived from the cumulative count of EWEs in fixed time windows (e.g., 5- and 10-year).
 
 
 # Any other relevant supporting data
