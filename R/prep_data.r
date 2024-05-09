@@ -1,7 +1,7 @@
 
 pkgs <- c("sf", "terra", "dplyr", "purrr", "tidytable",
           "data.table", "vtable", "skimr", "rmapshaper", "tigris")
-invisible(sapply(pkgs, library, quietly = TRUE, character.only = TRUE))
+invisible(vapply(pkgs, require, quietly = TRUE, character.only = TRUE, FUN.VALUE = logical(1)))
 sf_use_s2(FALSE)
 Sys.setenv("TIGRIS_CACHE_DIR" = sprintf("%s/tigris_cache/", Sys.getenv("HOME")))
 
@@ -18,7 +18,7 @@ path_pegs <-
   "/opt/", stop("COMPUTE_MODE should be one of 1, 2, or 3.\n"))))
 
 
-list.files(paste0(path_pegs, "Data_Freezes/latest"), 
+list.files(file.path(path_pegs, "Data_Freezes/latest"), 
         pattern = "*.(csv|RData|rdata|rds|RDS|CSV|txt)$",
         recursive = TRUE, full.names = TRUE)
 
@@ -373,6 +373,7 @@ eprs_vals <- eprs %>%
   lapply(unlist) 
 
 epr_number_allpresence <- Reduce(intersect, eprs_vals)
+length(epr_number_allpresence)
 
 epr_allp_sf <- epr.gis %>%
   dplyr::filter(epr_number %in% as.integer(epr_number_allpresence)) %>%
