@@ -8,8 +8,12 @@ output:
     style: cerulean
 ---
 
+## CF.
+- https://ohdsi.github.io/TheBookOfOhdsi/
+- https://athena.ohdsi.org/search-terms/start
 
 
+## Code
 ```{r}
 sysinfo <- Sys.info()
 if (sysinfo["sysname"] == "Linux") {
@@ -152,6 +156,7 @@ Let's move on to the NOAA storm events.
 
 
 ```{r noaa-storm-r-download}
+#| title: NOAA Storm events
 library(rvest)
 library(terra)
 
@@ -181,37 +186,82 @@ sapply(gzfiles, \(x) {
 
 
 ```{r noaa-storm-cleaning}
-csvfiles <- list.files("./input/noaastorm", "*.csv$", full.names = TRUE)
+devtools::install_github("johannesbjork/LaCroixColoR")
+
+pkgs <- c("terra", "data.table", "tidytable", "readr", "dplyr", "tidyterra", "ggplot2", "LaCroixColoR")
+vapply(pkgs, require, character.only = TRUE, FUN.VALUE = logical(1))
+
+options(tigris_use_cache = TRUE)
+stts <- tigris::states(year = 2020, cb = TRUE)
+stts <- vect(stts)
+stts <- stts[mainland_ext, ]
+library(ggthemes)
+
+
+csvfiles <- list.files("./input/noaastorm", "*.csv$", full.names = TRUE, recursive = TRUE)
 
 csv_locs <- grep("location", csvfiles, value = TRUE)
 csv_fatal <- grep("fatalit", csvfiles, value = TRUE)
 csv_detail <- grep("details", csvfiles, value = TRUE)
 
-dt_locs <- lapply(csv_locs, data.table::fread) |>
-    data.table::rbindlist()
+dt_locs <- lapply(csv_locs, readr::read_csv,
+  col_types = readr::cols(
+    YEARMONTH = col_character(),
+    LATITUDE = col_double(),
+    LONGITUDE = col_double(),
+    LAT2 = col_double(),
+    LON2 = col_double(),
+    LOCATION_INDEX = col_character(),
+    RANGE = col_double(),
+    EVENT_ID = col_character(),
+    EPISODE_ID = col_character()
+    )
+) |>
+  do.call(what = dplyr::bind_rows)
+dt_locs <- as.data.table(dt_locs)
 dt_fatal <- lapply(csv_fatal, data.table::fread) |>
     data.table::rbindlist()
-dt_detail <- lapply(csv_detail, data.table::fread) |>
-    data.table::rbindlist()
+dt_detail <- lapply(csv_detail, readr::read_csv,
+  col_types = readr::cols(
+    DAMAGE_PROPERTY = col_character(),
+    DAMAGE_CROPS = col_character(),
+    END_YEARMONTH = col_double(),
+    END_DAY = col_double(),
+    END_TIME = col_double()
+    )
+) |>
+  do.call(what = dplyr::bind_rows)
+dt_detail <- as.data.table(dt_detail)
 
 dt_detail_clear <-
     dt_detail |>
-    transmute(
+    tidytable::transmute(
         date = sprintf("%d%02d%04d", END_YEARMONTH, END_DAY, END_TIME),
-        episode_id = EPISODE_ID,
-        event_id = EVENT_ID,
+        episode_id = as.character(EPISODE_ID),
+        event_id = as.character(EVENT_ID),
         event_type = EVENT_TYPE,
         state = STATE,
-        begin_lat = BEGIN_LAT,
-        begin_lon = BEGIN_LON,
-        end_lat = END_LAT,
-        end_lon = END_LON
+        begin_lat = as.numeric(BEGIN_LAT),
+        begin_lon = as.numeric(BEGIN_LON),
+        end_lat = as.numeric(END_LAT),
+        end_lon = as.numeric(END_LON),
+        ninjuries_dir = ifelse(is.na(as.integer(INJURIES_DIRECT)), 0, as.integer(INJURIES_DIRECT)),
+        ninjuries_ind = ifelse(is.na(as.integer(INJURIES_INDIRECT)), 0, as.integer(INJURIES_INDIRECT)),
+        nfatal_dir = as.integer(DEATHS_DIRECT),
+        nfatal_ind = as.integer(DEATHS_INDIRECT),
+        mdamage_property = DAMAGE_PROPERTY,
+        mdamage_crops = DAMAGE_CROPS,
+        tor_width = TOR_WIDTH
+    ) |>
+    tidytable::mutate(
+        ninjuries = ninjuries_dir + ninjuries_ind,
+        nfatal = nfatal_dir + nfatal_ind
     )
 
 
 dt_locs_clear <-
     dt_locs |>
-    transmute(
+    tidytable::transmute(
         episode_id = EPISODE_ID,
         event_id = EVENT_ID,
         range_mi = RANGE,
@@ -220,26 +270,138 @@ dt_locs_clear <-
     )
 
 dt_locdetail <-
-    full_join(dt_detail_clear, dt_locs_clear,
+    tidytable::full_join(dt_detail_clear, dt_locs_clear,
         by = c("episode_id", "event_id"))
 
 dt_locdetail_vect <-
     dt_locdetail |>
-    filter(!is.na(latitude)) |>
+    tidytable::filter(!is.na(latitude)) |>
     data.frame() |>
     vect(geom = c("longitude", "latitude"), crs = "EPSG:4326")
 
-mainland_ext <- ext(c(xmin = -128, xmax = -64, ymin = 20, ymax = 52))
+mainland_ext <- ext(c(xmin = -126, xmax = -62, ymin = 21, ymax = 51))
 
+# subset to mainland US
 dt_locdetail_ml <- dt_locdetail_vect[mainland_ext, ]
-dt_locdetail_ml19 <- dt_locdetail_ml[substr(dt_locdetail_ml$date, 1, 4) == "2019", ]
+dt_locdetail_ml19 <- dt_locdetail_ml[as.numeric(substr(dt_locdetail_ml$date, 1, 4)) %in% seq(2020, 2020), ]
 
 dt_locdetail_ml19s <-
-    split(dt_locdetail_ml19, dt_locdetail_ml19$range_mi == 0)
-dt_locdetail_ml19b <-
-terra::buffer(dt_locdetail_ml19s[[1]], 1609 * dt_locdetail_ml19s[[1]]$range_mi)
+  split(dt_locdetail_ml19, dt_locdetail_ml19$range_mi == 0)
+dt_locdetail_ml19s1 <-
+  dt_locdetail_ml19s[[1]]
+dt_locdetail_ml19b <- 
+  dt_locdetail_ml19s1[dt_locdetail_ml19s1$mdamage_property > 0, ] |>
+  terra::buffer(width = 1609 * dt_locdetail_ml19s1$range_mi)
+
+
+dt_locdetail_mlr <- dt_locdetail_ml |>
+  mutate(yearnum = as.numeric(substr(dt_locdetail_ml$date, 1, 4))) |>
+  filter(yearnum %in% c(2005, 2022))
+dt_locdetail_mlrb <- dt_locdetail_mlr[dt_locdetail_mlr$mdamage_property > 0, ] |>
+  filter(!is.na(range_mi) & range_mi > 0)
+dt_locdetail_mlrb <- terra::buffer(dt_locdetail_mlrb,
+    width = 1609 * unlist(dt_locdetail_mlrb[["range_mi"]]))
+
+colvals <- palettetown::scale_fill_poke(6, 15)
+map_compar <-
+    ggplot() +
+    tidyterra::geom_spatvector(data = stts, color = "dark grey", fill = "#F2D28899", linewidth = 0.6) +
+    tidyterra::geom_spatvector(data = stts[stts$STATEFP == "37", ], color = "red", fill = "transparent", linewidth = 1) +
+    geom_spatvector(aes(fill = event_type), data = dt_locdetail_mlrb) +
+    facet_grid(rows = "yearnum") +
+    ggtitle("Extreme weather events with property damage") +
+    geom_label(x = -125, y = 24, label = "Note: buffer radius is based on reported range", hjust = 0) +
+    geom_label(x = -125, y = 25, label = "Data source: NOAA Storm Events Database, CRS: EPSG:4326", hjust = 0) +
+    scale_x_continuous(limits = c(-85, -73)) +
+    scale_y_continuous(limits = c(32.5, 38)) +
+    theme_minimal() +
+    ggthemes::scale_fill_tableau("Tableau 20")
+  #ggplot2::scale_fill_manual(values = colvals(15))
+ggsave(plot = map_compar, filename = "output/map_2005_2022.png", width = 12, height = 10, dpi = 508, units = "in")
+
+
+ggplot() +
+  tidyterra::geom_spatvector(data = stts, color = "dark grey", fill = "#F2D28899", linewidth = 0.6) +
+  geom_spatvector(aes(fill = event_type), data = dt_locdetail_ml19b) +
+  ggtitle("Extreme weather events with property damage (2020)") +
+  geom_label(x = -125, y = 24, label = "Note: buffer radius is based on reported range", hjust = 0) +
+  geom_label(x = -125, y = 25, label = "Data source: NOAA Storm Events Database, CRS: EPSG:4326", hjust = 0) +
+  theme_minimal() +
+  ggplot2::scale_fill_manual(values = palettetown::scale_fill_poke(6, 15))
 
 
 plot(dt_locdetail_ml19, y = "event_type", type = "classes", cex = 0.33)
+plot(dt_locdetail_ml19b, y = "event_type", type = "classes", cex = 0.33, lwd = 0.1, mar = c(1, 1, 0.25, 12), main = "Extreme weather events with property damage (2020)")
+text(-125, 24, "Note: buffer radius is based on reported range", adj = 0)
+text(-125, 25, "Data source: NOAA Storm Events Database, CRS: EPSG:4326", adj = 0)
+
+```
+
+
+```{r mapping function}
+
+pal0 <- ggthemes::tableau_color_pal(palette = "Tableau 20")
+
+hazardtype <- c(
+    "Debris Flow",
+    "Dust Devil",
+    "Flash Flood",
+    "Flood",
+    "Funnel Cloud",
+    "Hail",
+    "Heavy Rain",
+    "Lightning",
+    "Marine Hail",
+    "Marine High Wind", "Marine Strong Wind", "Marine Thunderstorm Wind",
+    "Thunderstorm Wind", "Tornado", "Waterspout"
+)
+colorbase <- pal0(length(hazardtype))
+manuallegend <- data.frame(id = hazardtype, col = colorbase)
+
+
+
+tidyterra::geom_spatvector(
+  
+)
+map_noaa_year <-
+  function(year) {
+
+    dt_locdetail_ml19 <- dt_locdetail_ml[as.numeric(substr(dt_locdetail_ml$date, 1, 4)) %in% seq(year, year), ]
+
+    dt_locdetail_ml19s <-
+      split(dt_locdetail_ml19, dt_locdetail_ml19$range_mi == 0)
+    dt_locdetail_ml19s1 <-
+      dt_locdetail_ml19s[[1]]
+    dt_locdetail_ml19b <-
+      dt_locdetail_ml19s1[dt_locdetail_ml19s1$mdamage_property > 0, ] |>
+      terra::buffer(width = 1609 * dt_locdetail_ml19s1$range_mi)
+    
+    
+    plot(stts, col = "#F2D28899", border = "dark grey", lwd = 0.88,
+         mar = c(1, 1, 0.25, 12),
+         ext = c(-126, -66, 22, 50.5),
+         box = FALSE
+         )
+    plot(dt_locdetail_ml19b, y = "event_type",
+         add = TRUE,
+         type = "classes",
+         col = manuallegend,
+         cex = 0.33, lwd = 0.1,
+         main = sprintf("Extreme weather events with property damage (%d)", year)
+    )
+    text(-124.5, 24, "Note: buffer radius is based on reported range", adj = 0)
+    text(-124.5, 25, "Data source: NOAA Storm Events Database, CRS: EPSG:4326", adj = 0)
+    
+  }
+
+map_noaa_year(1980)
+map_noaa_year(1990)
+map_noaa_year(2000)
+map_noaa_year(2005)
+map_noaa_year(2010)
+map_noaa_year(2015)
+map_noaa_year(2020)
+map_noaa_year(2022)
+
 
 ```

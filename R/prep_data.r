@@ -1,23 +1,24 @@
 
 pkgs <- c("sf", "terra", "dplyr", "purrr", "tidytable",
           "data.table", "vtable", "skimr", "rmapshaper", "tigris")
-invisible(sapply(pkgs, library, quietly = TRUE, character.only = TRUE))
+invisible(vapply(pkgs, require, quietly = TRUE, character.only = TRUE, FUN.VALUE = logical(1)))
 sf_use_s2(FALSE)
 Sys.setenv("TIGRIS_CACHE_DIR" = sprintf("%s/tigris_cache/", Sys.getenv("HOME")))
 
 ## data path determination
 ## compute_mode 1 (wine mount), compute_mode 2 (hpc compute node), 3 (container internal)
+paths <- read.csv("~/.songi2init")
 COMPUTE_MODE <- 2
 path_pegs <-
   ifelse(COMPUTE_MODE == 1,
   "/Volumes/PEGS/",
   ifelse(COMPUTE_MODE == 2,
-  "/ddn/gs1/project/controlled/PEGS/",
+  paths$val[paths$var == "PEGS"],
   ifelse(COMPUTE_MODE == 3,
   "/opt/", stop("COMPUTE_MODE should be one of 1, 2, or 3.\n"))))
 
 
-list.files(paste0(path_pegs, "Data_Freezes/latest"), 
+list.files(file.path(path_pegs, "Data_Freezes/latest"), 
         pattern = "*.(csv|RData|rdata|rds|RDS|CSV|txt)$",
         recursive = TRUE, full.names = TRUE)
 
@@ -92,6 +93,34 @@ epr_reloc <-
   ungroup() |>
   left_join(epr.bcbb.ind, by = c("epr_number"))
 
+## reloc history: is the longest living place the same as eb?
+epr_reloc_ll_ea <- epr_reloc |>
+  group_by(epr_number) |>
+  filter(gis_study_event %in% c("current_address_exposome_a", "longest_lived_adult_exposome_a")) |>
+  select(1:8) |>
+  mutate(gis_lat_lag = lag(gis_latitude),
+         gis_lon_lag = lag(gis_longitude)) |>
+  rowwise() |>
+  mutate(
+    reloc_dist =
+    geosphere::distGeo(
+      c(gis_longitude, gis_latitude),
+      c(gis_lon_lag, gis_lat_lag)
+    )
+  ) |>
+  ungroup()
+
+# reloc history: is the state of longest living place
+#  different from that of eb?
+# only works in dplyr, not tidytable as of 02/2024
+epr_reloc_ll_ea_st <- epr_reloc |>
+  group_by(epr_number) |>
+  filter(gis_study_event %in% c("current_address_exposome_a", "longest_lived_adult_exposome_a")) |>
+  select(1:8) |>
+  filter(gis_state[1] == gis_state[2])
+
+
+
 # 660 withdrawn
 table(epr_reloc$withdrawal_date) |> _[-1] |> sum()
 table(epr_reloc$sex_derived)
@@ -104,8 +133,15 @@ epr.gis.he <- epr.gis %>%
   filter(gis_quality == "residential")
 
 
+#----------------------------#
+## Mental Health Outcomes ####
+## HE: bipolar disorder indicators
+## EB: stress level assessment (93-94, 95-97 reverse)
+##   ATC: medication
 
-## outcomes
+
+
+
 ### ATC
 epr_atc_psych <-
   epr.atc %>%
@@ -182,7 +218,10 @@ epr_eb_mental <-
   mutate(across(-1, ~as.integer(.))) %>%
   mutate(across(-1, ~ifelse(is.na(.), -999, .)))
 
-
+# TODO: HE34, EB210-EB214, Military experience, PTSD
+# TODO: extract SNPs with plink2
+# FIXME: data clearance for naming
+# Methylation + Polygenic scores
 
 ### GIS / EJI
 # temporal inconsistency check
@@ -337,6 +376,7 @@ eprs_vals <- eprs %>%
   lapply(unlist) 
 
 epr_number_allpresence <- Reduce(intersect, eprs_vals)
+length(epr_number_allpresence)
 
 epr_allp_sf <- epr.gis %>%
   dplyr::filter(epr_number %in% as.integer(epr_number_allpresence)) %>%
