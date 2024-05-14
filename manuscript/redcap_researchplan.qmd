@@ -42,7 +42,7 @@ We request following variables for the analysis:
   - Exposome survey (internal & external)
     - ATC codes from self-reported medication
 
-- Genetic data
+- Genetic data: the following list of single nucleotide polymorphisms (SNPs) along with methylation data will be extracted from the full genome sequencing data.
   1. FKBP5 gene: SNPs -- rs1360780, rs3800373, rs9296158
   2. CRHR1 gene: SNPs -- rs7209436, rs110402, rs242924
   3. BDNF gene: SNP -- rs6265 (Val66Met)
@@ -56,6 +56,28 @@ We request following variables for the analysis:
   - Socioeconomic Vulnerability Index variables
   - Earth Observation variables
 
+```{r include = F}
+# https://doi.org/10.1016/j.arr.2022.101743
+
+# TODO: HE34, EB210-EB214, Military experience, PTSD
+# TODO: extract SNPs with plink2
+# FIXME: data clearance for naming
+
+# rs1360780
+# rs3800373
+# rs9296158
+# rs7209436
+# rs110402
+# rs242924
+# rs6265
+# rs4680
+# rs6198
+# rs41423247
+# rs5522
+# rs941601
+# rs8022616
+```
+
 
 # Description of desired populations (gender, race/ethnicity, age, genotype, phenotype, etc.)
 
@@ -65,17 +87,17 @@ Since we are interested in the general population, we do not have any specific c
 
 # Details of study design
 
-The main outcome is assessed from the questionnaire in the health and exposure survey.
+The main outcome is defined from the questionnaire in the exposome survey. This survey provides ten questions to assess the very recent stress level of individuals, in a month range from the survey completion date, thereby we will calculate perceived stress score (PSS). 
 
 
-Main exposure is measured from the NOAA Storm Events Database. The database records twelve types of weather events including tornado, thunderstorm wind, hail, flash flood, flood, winter storm, ice storm, snow, extreme cold, extreme heat, drought, and high wind. The database provides the date, time, location, and intensity of the events. The intensity of the events is measured by the number of fatalities, injuries, and property damages. Locations and the intensity of the events will be used as the main exposure.
+Main exposure is measured from the NOAA Storm Events Database. The database records twelve types of weather events including tornado, thunderstorm wind, hail, flash flood, flood, winter storm, ice storm, snow, extreme cold, extreme heat, drought, and high wind. The database provides the date, time, location, and intensity of the events. The intensity of the events is measured by the number of fatalities, injuries, and property damages. Locations and the intensity of the events will be used as the main exposure. The duration of residence is leveraged to assess exposure to extreme weather events. The dates of the residential records include the longest residence during the adult and at the time of survey completion, where we define the exposure windows. Long-term exposure is measured at different periods, where our first target is the longest residence in the adult life. The second target is the extended window from one year before to five or ten years before the survey completion. Due to the characteristics of the source data for exposure assessment collecting events from local media to NOAA staff, our exposure assessment could be comprehensive in terms of reflecting the local intensity and the indirect exposure to the extreme weather events having occurred in the large scale of data. Per the exploratory analysis of the source data, we found that the number of events causing property damage will be sufficient for spatiotemporal exposure assessment. Therefore, we will such events as the main exposure in the analysis. Another consideration on exposure assessment is missing range and trajectories. Certain extreme weather events such as hurricanes and tornadoes always have spatiotemporal trajectories, which are missing in the source data. In this regard, we will fill in trajectories by leveraging the start and end time and locations of each event. Most of the events include spatiotemporal information, which gives the fine-grained spatiotemporal exposure assessment. To account for the missing range, we will impute ranges using the covariates in the source data then perform the sensitivity analysis without imputed ranges. The spatial variability in property damage per event will be supplemented by Federal Emergency Management Agency (FEMA) natural hazard aids data. This data will help to mitigate the bias in the exposure assessment along with the neighborhood contexts (social vulnerability index and environmental justice index) that proxy the vulnerability to the extreme weather events.
 
-The duration of residence will be measured by the time difference between the date of the extreme weather event and the date of the residential history. The stress level of individuals will be measured by the stress score derived from the questionnaire in the health and exposure survey.
+Since mental health status is associated with personal experience and genetic factors, we will utilize the genetic data, previous history of traumatic stress or mental illness, and potential factors that are known to be closely related to mental illness such as veteran status and current service status. The genetic data, biological aging proxied by methylation and well-documented SNPs that are associated with mental illness, will control the confounding effect of genetic factors.
+
  
 
-
 # Statistical analysis plan including power analysis
-G-computation (or G-formula) models are used to examine the effect modification of the cumulative exposure to extreme weather events assessed from NOAA Storm Events Database. Stress scores will be considered ordinal and continuous variable, each of which will be analyzed with multinomial logistic and quantile regression models, respectively. These models will serve as a base model for g-computation. Treatment regime is derived from the cumulative count of EWEs in fixed time windows (e.g., 5- and 10-year).
+G-computation (or G-formula) models are used to examine the effect modification of the cumulative exposure to extreme weather events assessed from NOAA Storm Events Database. Stress scores will be considered ordinal and continuous variable, each of which will be analyzed with multinomial logistic and quantile regression models, respectively. The three ordinal levels are by the PSS classification, which gives low, medium, and high levels. These models will serve as a base model for g-computation. Treatment regime is derived from the cumulative count of EWEs in fixed time windows (e.g., 5- and 10-year). 
 
 
 # Any other relevant supporting data

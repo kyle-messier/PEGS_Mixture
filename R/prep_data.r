@@ -218,7 +218,10 @@ epr_eb_mental <-
   mutate(across(-1, ~as.integer(.))) %>%
   mutate(across(-1, ~ifelse(is.na(.), -999, .)))
 
-
+# TODO: HE34, EB210-EB214, Military experience, PTSD
+# TODO: extract SNPs with plink2
+# FIXME: data clearance for naming
+# Methylation + Polygenic scores
 
 ### GIS / EJI
 # temporal inconsistency check

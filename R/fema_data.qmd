@@ -8,8 +8,12 @@ output:
     style: cerulean
 ---
 
+## CF.
+- https://ohdsi.github.io/TheBookOfOhdsi/
+- https://athena.ohdsi.org/search-terms/start
 
 
+## Code
 ```{r}
 sysinfo <- Sys.info()
 if (sysinfo["sysname"] == "Linux") {
