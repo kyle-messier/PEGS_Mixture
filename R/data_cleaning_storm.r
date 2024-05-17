@@ -1,5 +1,5 @@
 ## Load packages ####
-pkgs <- c("data.table", "sf", "stars", "sftime", "terra", "dplyr", "tidyr")
+pkgs <- c("data.table", "sf", "stars", "sftime", "terra", "dplyr", "tidyr", "qs")
 invisible(sapply(pkgs, library, quietly = TRUE, character.only = TRUE))
 options(sf_use_s2 = FALSE)
 
@@ -46,7 +46,7 @@ csv_locs <- quicklist(dir_input, "locations") |>
 # fwrite(csv_locs, "input/noaastorm/storm_locs_all.csv.gz")
 
 # load file
-csv_details <- readRDS("output/noaa_stormdb.rds")
+csv_details <- qs::qread("output/noaa_stormdb.qs")
 
 unique(csv_details$EVENT_TYPE)
 csv_details[EVENT_TYPE == "Heat", ]
@@ -59,7 +59,7 @@ csv_details2 <- csv_details[,
 `:=`(damage_property = substr(DAMAGE_PROPERTY, 1, nchar(DAMAGE_PROPERTY) - 1),
      damage_property_unit = substr(DAMAGE_PROPERTY, nchar(DAMAGE_PROPERTY), nchar(DAMAGE_PROPERTY)))][,
 `:=`(damage_property = as.numeric(damage_property),
-     damage_property_unit = plyr::mapvalues(damage_property_unit, c("K", "M", "B"), c(1e3, 1e6, 1e9)))]
+     damage_property_unit = plyr::mapvalues(damage_property_unit, c("h", "H", "K", "M", "B"), c(1e3, 1e3, 1e3, 1e6, 1e9)))]
 
 # unusual cases: property unit ends with H or h (houses?)
 csv_details |>
@@ -78,19 +78,21 @@ csv_details[grepl("(T|t)orna", EVENT_TYPE), ] %>%
 csv_details[grepl("(F|f)ire", EVENT_TYPE), "YEAR"] |>
   table()
 
-csv_details[!is.na(TOR_WIDTH) & TOR_WIDTH > 0, ] %>%
+# tornado width around NC
+csv_details2[!is.na(TOR_WIDTH) & TOR_WIDTH > 0, ] %>%
   terra::vect(geom = c("END_LON", "END_LAT"), crs = "EPSG:4326", keepgeom = TRUE) %>%
   terra::buffer(width = .$TOR_WIDTH) %>%
   plot(xlim = c(-84, -80), ylim = c(33, 37))
 
 # Tornados
 # "blocked" pattern; still a few in NC
-csv_details[!is.na(TOR_WIDTH) & TOR_WIDTH > 0,
+csv_details2[!is.na(TOR_WIDTH) & TOR_WIDTH > 0,
   c("BEGIN_LON", "BEGIN_LAT", "END_LON", "END_LAT")] %>%
   as.matrix() %>%
+  .[!is.na(.[,3]), ] %>%
   terra::vect(crs = "EPSG:4326", type = "lines") %>%
   plot()
-  # plot(xlim = c(-90, -80), ylim = c(32, 38))
+  #plot(xlim = c(-90, -80), ylim = c(32, 38))
 
 
 ## Intersection of noaa and fema
@@ -129,6 +131,8 @@ plot(ncp)
 
 unique(csv_details$EVENT_TYPE)
 
+
+### NOAA event types reclassification ####
 trans_hazard <-
   dplyr::tribble(
     ~type,  ~group,
@@ -180,7 +184,7 @@ csv_details_sub2 <- csv_details_sub[!is.na(BEGIN_LON), ][
   (BEGIN_LON <= -64 & BEGIN_LON >= -128) & (BEGIN_LAT >= 20 & BEGIN_LAT <= 52),
 ][YEAR >= 2000,]
 
-
+## Exploratory plots ####
 years <- seq(2006, 2023)
 map_noaa_l <- copy(csv_details_sub2) %>%
   tidytable::filter((!is.na(BEGIN_LON) & !is.na(END_LON)) & !(BEGIN_LON == END_LON & BEGIN_LAT == END_LAT)) %>%
@@ -201,6 +205,10 @@ map_noaa_p <- copy(csv_details_sub2) %>%
   sf::st_set_crs("EPSG:4326")
 
 
+map_noaa <-
+  dplyr::bind_rows(map_noaa_l, map_noaa_p)
+
+
 ## point + line
 line_sub <- copy(csv_details_sub)[(!is.na(BEGIN_LON) & !is.na(END_LON)) & !(BEGIN_LON == END_LON & BEGIN_LAT == END_LAT), ]
 line_sub_v <- line_sub[, c("BEGIN_LON", "BEGIN_LAT", "END_LON", "END_LAT")] %>%
@@ -214,6 +222,7 @@ point_sub_v <- point_sub[, c("BEGIN_LON", "BEGIN_LAT")] %>%
   as.matrix() %>%
   terra::vect(crs = "EPSG:4326", type = "points")
 point_sub_v <- cbind(point_sub_v, point_sub)
+
 
 
 par(mfcol = c(1, 1))
@@ -230,17 +239,17 @@ map_noaa_l %>%
 par(mfcol = c(5, 4))
 for (i in years) {
   mapsf::mf_map(
-    map_noaa_l %>% dplyr::filter(YEAR == i & event_re == "Tornado"),
-    type = "base",
-    lwd = 0.8,
-    xlim = c(-128, -64), ylim = c(22, 52))
-  mapsf::mf_map(
     map_noaa_p %>% dplyr::filter(YEAR == i & event_re == "Tornado"),
-    add = TRUE,
+    type = "base",
     cex = 0.2,
     col = "red",
-    pch = 19
+    pch = 19,
+    xlim = c(-128, -64), ylim = c(22, 52)
   )
+  mapsf::mf_map(
+    map_noaa_l %>% dplyr::filter(YEAR == i & event_re == "Tornado"),
+    add = TRUE,
+    lwd = 0.8)
 }
 # dev.off()
 
@@ -248,52 +257,103 @@ for (i in years) {
 par(mfcol = c(5, 4))
 for (i in years) {
   mapsf::mf_map(
-    map_noaa_l %>% dplyr::filter(YEAR == i & event_re == "Thunderstorm"),
-    type = "base",
-    lwd = 0.8,
-    xlim = c(-128, -64), ylim = c(22, 52))
-  mapsf::mf_map(
     map_noaa_p %>% dplyr::filter(YEAR == i & event_re == "Thunderstorm"),
-    add = TRUE,
+    type = "base",
     cex = 0.2,
     col = "red",
-    pch = 19
+    pch = 19,
+    xlim = c(-128, -64), ylim = c(22, 52)
   )
+  mapsf::mf_map(
+    map_noaa_l %>% dplyr::filter(YEAR == i & event_re == "Thunderstorm"),
+    add = TRUE,
+    lwd = 0.8)
 }
 # dev.off()
 
+sts <- tigris::states(year = 2020, cb = TRUE) %>%
+  sf::st_transform("EPSG:4326")
+
+plot(
+  map_noaa_l %>% dplyr::filter(event_re == "Storm") %>% .$geometry,
+    # st_intersection(., st_as_sfc(st_bbox(c(xmin = -84, xmax = -80, ymin = 33, ymax = 37), crs = 4326))),
+  #type = "base",
+  xlim = c(-84, -76),
+  ylim = c(34, 37.5),
+  lwd = 0.8
+)
+plot(sts$geometry, add = TRUE, border = "purple", lwd = 1.5)
+
+plot(
+  map_noaa_l %>% dplyr::filter(event_re == "Tornado") %>% .$geometry,
+    # st_intersection(., st_as_sfc(st_bbox(c(xmin = -84, xmax = -80, ymin = 33, ymax = 37), crs = 4326))),
+  #type = "base",
+  xlim = c(-84, -76),
+  ylim = c(34, 37.5),
+  lwd = 0.8
+)
+plot(sts$geometry, add = TRUE, border = "purple", lwd = 1.5)
+
+plot(
+  map_noaa %>% dplyr::filter(event_re == "Storm") %>% .$geometry,
+  xlim = c(-84, -76),
+  ylim = c(34, 37.5),
+  cex = 0.6,
+  pch = 19,
+  lwd = 0.8
+)
+plot(sts$geometry, add = TRUE, border = "purple", lwd = 1.5)
+
 
 ## count
-ncp <- sf::st_set_crs(ncp, "EPSG:5070")
+# ncp <- sf::st_set_crs(ncp, "EPSG:5070")
+source("R/prep_add_snps.r")
+pegs_main_psssf <-
+  pegs_main_pss %>%
+  as.data.frame %>%
+  sf::st_as_sf(sf_column_name = "geometry", crs = 5070)
 
 map_noaa_lt <- sf::st_transform(map_noaa_l, "EPSG:5070")
 map_noaa_pt <- sf::st_transform(map_noaa_p, "EPSG:5070")
 
-ncpb <- sf::st_buffer(ncp, units::set_units(30, "km")) %>%
-  dplyr::mutate(n_l_ewe = lengths(sf::st_intersects(geom, map_noaa_lt))) %>%
-  dplyr::mutate(n_p_ewe = lengths(sf::st_intersects(geom, map_noaa_pt)))
+ncpb <- sf::st_buffer(pegs_main_psssf, units::set_units(30, "km")) %>%
+  dplyr::mutate(n_l_ewe = lengths(sf::st_intersects(geometry, map_noaa_lt))) %>%
+  dplyr::mutate(n_p_ewe = lengths(sf::st_intersects(geometry, map_noaa_pt)))
 
-years <- seq(2001, 2023)
+years <- seq(2001, 2020)
 lyears <- split(years, years) %>%
   lapply(function(tg) {
     na0 <- function(x) ifelse(is.na(x), 0, x)
     nck <-
-      sf::st_buffer(ncp, units::set_units(20, "km")) %>%
+      sf::st_buffer(pegs_main_psssf, units::set_units(20, "km")) %>%
       dplyr::mutate(
-        n_l_ewe = lengths(sf::st_intersects(geom, map_noaa_lt %>% dplyr::filter(YEAR == tg)))
+        n_l_ewe = lengths(sf::st_intersects(geometry, map_noaa_lt %>% dplyr::filter(YEAR == tg)))
       ) %>%
       dplyr::mutate(
-        n_p_ewe = lengths(sf::st_intersects(geom, map_noaa_pt %>% dplyr::filter(YEAR == tg)))
+        n_p_ewe = lengths(sf::st_intersects(geometry, map_noaa_pt %>% dplyr::filter(YEAR == tg)))
       ) %>%
       dplyr::mutate(n_ewe = na0(n_l_ewe) + na0(n_p_ewe))
     names(nck)[ncol(nck)] <- sprintf("n_ewe_%d", tg)
     return(nck)
   })
 
-par(mfcol = c(4, 6))
+
+ncbox <- st_bbox(c(xmin = -84.5, xmax = -76, ymin = 34.5, ymax = 37.5), crs = 4326)
+ncbox <- st_as_sfc(ncbox)
+ncbox <- st_transform(ncbox, 5070)
+
+png("output/yearly_exposure.png", width = 12, height = 10, units= "in", res = 508)
+par(mfcol = c(4, 5))
 for (y in years) {
-  mapsf::mf_choro(lyears[[y - 2000]], sprintf("n_ewe_%d", y),
-  breaks = c(0, 25, 50, 75, 100, 150, 200), cex = 0.05, pch = 19)
+  mapsf::mf_init(x = ncbox)
+  mapsf::mf_choro(sf::st_centroid(lyears[[y - 2000]]), sprintf("n_ewe_%d", y),
+  breaks = c(0, 25, 50, 75, 100, 150, 200), cex = 0.5, pch = 19,
+  add = TRUE)
 }
+dev.off()
+
+par(mfrow = c(1, 1))
+mapsf::mf_init(x = ncbox)
+mapsf::mf_choro(lyears[[1]], "n_ewe_2001")
 
 # TODO: by intensity

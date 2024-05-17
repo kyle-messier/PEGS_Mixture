@@ -1,7 +1,11 @@
 
-pkgs <- c("sf", "terra", "dplyr", "purrr", "tidytable",
+pkgs <- c("sf", "terra", "dplyr", "purrr", "tidytable", "qs",
           "data.table", "vtable", "skimr", "rmapshaper", "tigris")
-invisible(vapply(pkgs, require, quietly = TRUE, character.only = TRUE, FUN.VALUE = logical(1)))
+invisible(
+  vapply(pkgs, require, quietly = TRUE,
+         character.only = TRUE,
+         FUN.VALUE = logical(1))
+)
 sf_use_s2(FALSE)
 Sys.setenv("TIGRIS_CACHE_DIR" = sprintf("%s/tigris_cache/", Sys.getenv("HOME")))
 
@@ -53,20 +57,20 @@ epr.gis.hist <- epr.gis |>
   mutate(across(ends_with("_date"), ~as.POSIXct(as.character(.), format = "%Y-%m-%d"))) |>
   mutate(gis_duration = difftime(gis_end_date, gis_start_date, units = "days"))
 
-epr.gis.hist |>
-  group_by(gis_study_event) |>
-  summarize(mean_duration = mean(gis_duration, na.rm = T))
-epr.gis.hist |>
-  group_by(gis_study_event) |>
-  summarize(N = n())
-# How many participants reported child/adult residence?
-epr.gis.hist |>
-  filter(endsWith(gis_study_event, "exposome_a")) |>
-  group_by(epr_number) |>
-  summarize(N = (n() == 3)) |>
-  ungroup() |>
-  _$N |>
-  sum()
+# epr.gis.hist |>
+#   group_by(gis_study_event) |>
+#   summarize(mean_duration = mean(gis_duration, na.rm = T))
+# epr.gis.hist |>
+#   group_by(gis_study_event) |>
+#   summarize(N = n())
+# # How many participants reported child/adult residence?
+# epr.gis.hist |>
+#   filter(endsWith(gis_study_event, "exposome_a")) |>
+#   group_by(epr_number) |>
+#   summarize(N = (n() == 3)) |>
+#   ungroup() |>
+#   _$N |>
+#   sum()
 
 ## distance calc (+ excluding one-per-participant records)
 ## + indiv. char
@@ -380,40 +384,48 @@ length(epr_number_allpresence)
 
 epr_allp_sf <- epr.gis %>%
   dplyr::filter(epr_number %in% as.integer(epr_number_allpresence)) %>%
+  as_tibble %>%
   st_as_sf(coords = c("gis_longitude", "gis_latitude"), crs = 4326)
 
 
-epr_allp_sf_ea <-
+epr_main <-
   epr_allp_sf %>%
   dplyr::mutate(gis_event_date = as.Date(gis_event_date, format = "%m/%d/%Y")) %>%
   dplyr::filter(gis_study_event == "current_address_exposome_a") %>%
   dplyr::filter(!gis_state %in% c("HI", "AK", "GU", "VI", "PR")) %>%
   dplyr::filter(!is.na(gis_event_date)) %>%
-  sf::st_transform("EPSG:5070")
-
-epr_allp_hms <- cbind(epr_allp_sf_ea, hms_smoke_exp) |>
-  mutate(epr_number = as.character(epr_number))
-#     mutate(geoid10 = as.character(gis_geoid10)) |>
-#     left_join(firerisk, by = c("geoid10" = "geoid10"))
-
-
-
-
-epr_atc_psychs <- epr_atc_psych %>%
-  select(epr_number) %>%
-  unique() %>%
-  as.data.table()
-epr_console <-
-  epr_allp_hms %>%
-  # epr_atc_psychs %>%
+  dplyr::mutate(epr_number = as.character(epr_number)) %>%
+  sf::st_transform("EPSG:5070") %>%
   # left_join(epr_gis_ea) %>%
   # left_join(epr_atc_psych %>% select(1, flag_antidep_1p) %>% unique()) %>%
-  inner_join(epr_eb_mental) %>%
-  inner_join(epr_he_mental) %>%
-  inner_join(epr_eji) %>%
-  inner_join(epr_svi) %>%
-  inner_join(epr_hazards) %>%
-  inner_join(epr_earth) %>%
-  inner_join(epr_bcbb)
+  inner_join(epr_eb_mental, by = "epr_number") %>%
+  inner_join(epr_he_mental, by = "epr_number") %>%
+  inner_join(epr_eji, by = "epr_number") %>%
+  inner_join(epr_svi, by = "epr_number") %>%
+  inner_join(epr_hazards, by = c("epr_number", "gis_study_event")) %>%
+  inner_join(epr_earth, by = "epr_number") %>%
+  inner_join(epr_bcbb, by = c("epr_number"))
+
+
+
+# epr_allp_hms <- cbind(epr_allp_sf_ea, hms_smoke_exp) |>
+#   mutate(epr_number = as.character(epr_number))
+
+# epr_atc_psychs <- epr_atc_psych %>%
+#   select(epr_number) %>%
+#   unique() %>%
+#   as.data.table()
+# epr_console <-
+#   epr_allp_hms %>%
+#   # epr_atc_psychs %>%
+#   # left_join(epr_gis_ea) %>%
+#   # left_join(epr_atc_psych %>% select(1, flag_antidep_1p) %>% unique()) %>%
+#   inner_join(epr_eb_mental) %>%
+#   inner_join(epr_he_mental) %>%
+#   inner_join(epr_eji) %>%
+#   inner_join(epr_svi) %>%
+#   inner_join(epr_hazards) %>%
+#   inner_join(epr_earth) %>%
+#   inner_join(epr_bcbb)
 
 
