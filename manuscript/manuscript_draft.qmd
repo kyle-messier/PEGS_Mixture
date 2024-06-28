@@ -1,0 +1,53 @@
+---
+title: PEGS Paper
+format:
+  pdf:
+    colorlinks: true
+    documentclass: article
+  docx: default
+author:
+  - Insang Song
+  - Kyle P. Messier
+---
+
+
+# Introduction
+
+
+
+
+[@berry2010review]: various pathways were identified. Colliding factors of climate change. Climate change effect is not unidirectional and unilaterally guides to the adverse effect only. Wide range of perspectives should be employed.
+
+
+# Methods
+- Data
+    - PEGS: subtables, surveys, spatiotemporal locations
+- Outcome: stress scale + preconditions
+- Exposure assessment
+    - NOAA Storm
+        - Trajectory restoration
+        - Imputation
+        - Intensity assignment / filtering
+        - Events with actual damage
+    - FEMA Aid+Emergency Declaration
+- Confounders
+    - PTSD related: veteran status
+- Analysis
+    - Model: ordinal logistic regression
+    - G-computation
+    - Sensitivity analysis
+
+
+# Results
+
+
+
+# Discussion
+
+
+
+# Conclusion
+
+
+
+# Reference

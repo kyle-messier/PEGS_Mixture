@@ -27,6 +27,10 @@ pegs_main_pss <- pegs_main %>%
   mutate(pss = rowSums(select(., starts_with("eb_e09")))) %>%
   mutate(pss_class = cut(pss, c(0, 16, 26, 40), labels = c("low", "medium", "high"))) %>%
   filter(!is.na(pss_class))
+  # filter(across(everything(), ~!is.na(.)))
+
+pegs_main_psso <- pegs_main_pss
+pegs_main_pss <- pegs_main_pss[, sapply(pegs_main_pss, function(x) sum(x == 0) < 1e3)]
 
 dim(pegs_main_pss)
 summary(pegs_main_pss$pss_class)
@@ -43,6 +47,14 @@ mainform <- reformulate(
   response = "pss_class"
 )
 
-mainmult <- MASS::polr(mainform, data = pegs_main_pss, Hess = TRUE)
-summary(mainmult)
-mainmult
+pegs_main_pss <-
+  pegs_main_pss |>
+  select(-geometry)
+pegs_main_pss_com <- pegs_main_pss[complete.cases(pegs_main_pss), ]
+
+mainmult <- MASS::polr(mainform, data = pegs_main_pss_com, Hess = TRUE)
+# summary(mainmult)
+
+# gtsummary::tbl_regression(mainmult)
+# mainmult
+# broom::tidy(mainmult)
